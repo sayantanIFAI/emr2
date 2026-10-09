@@ -29,3 +29,9 @@ def test_apply_replaces_the_whole_page_answer_only_when_the_line_is_clear():
     p = {"patient": {"name": "Sumita Gupta Gangopadhyay", "age_text": "30", "sex": "M"}}
     found = A.apply(C(), png.tobytes(), blocks(), p)
     assert p["patient"]["age_text"] == "74 yrs" and p["patient"]["sex"] == "Female" and found["sex_whole_page_said"] == "M"
+
+
+def test_a_date_beside_the_name_is_never_the_age_and_the_nearest_piece_wins():
+    b = blocks() + [{"text": "19/6/26", "bbox": [700, 262, 790, 300]}, {"text": "73yrs", "bbox": [700, 262, 740, 300]}]
+    assert A.find_token(blocks() + [{"text": "19/6/26", "bbox": [700, 262, 790, 300]}], "Sumita Gupta Gangopadhyay") == (873, 272, 961, 314)
+    assert A.find_token(b, "Sumita Gupta Gangopadhyay") == (700, 262, 740, 300)

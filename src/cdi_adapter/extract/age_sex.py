@@ -27,22 +27,29 @@ _UNITS = {"m": "months", "mo": "months", "month": "months", "months": "months", 
           "w": "weeks", "wk": "weeks", "week": "weeks", "weeks": "weeks"}
 
 
+_DATE = re.compile(r"^\W{0,2}\d{1,2}\s*[/.\-]\s*\d{1,2}\s*[/.\-]\s*\d{2,4}\W{0,2}$")
+
+
 def find_token(blocks: list[dict[str, Any]] | None, name: str | None) -> tuple[int, int, int, int] | None:
-    """The box of the age / sex piece in the name's row (the piece that starts with a number), or None."""
+    """The box of the age / sex piece beside the name: the piece that starts with a number (never a date), on the name's row, NEAREST to the
+    right of the name's last word. MEASURED on a real page: the first matching piece was the visit date "19/6/26" and the age came out 19."""
     best = resolve_llm.best_name_block(blocks, name)
     if best is None:
         return None
     left, top, right, bottom = resolve_llm.name_row_box(best, blocks)
     lh = max(8, int(best["bbox"][3]) - int(best["bbox"][1]))
+    name_end = int(best["bbox"][2])
+    found: list[tuple[int, tuple[int, int, int, int]]] = []
     for b in blocks or []:
         try:
             x0, y0, x1, y1 = (int(float(v)) for v in b["bbox"][:4])
         except (KeyError, TypeError, ValueError, IndexError):
             continue
+        text = str(b.get("text") or "").strip()
         cy = (y0 + y1) / 2
-        if abs(cy - (top + bottom) / 2) <= 1.2 * max(lh, bottom - top) and x0 >= left and _TOKEN.match(str(b.get("text") or "").strip()):
-            return x0, y0, x1, y1
-    return None
+        if abs(cy - (top + bottom) / 2) <= 1.2 * max(lh, bottom - top) and x0 >= left and _TOKEN.match(text) and not _DATE.match(text):
+            found.append((abs(x0 - name_end) if x0 >= name_end - 5 else 10 ** 6 + abs(x0 - name_end), (x0, y0, x1, y1)))
+    return min(found)[1] if found else None
 
 
 def crops_for(image: bytes, box: tuple[int, int, int, int]) -> list[bytes]:
