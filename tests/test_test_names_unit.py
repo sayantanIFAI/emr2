@@ -247,4 +247,9 @@ def test_a_test_the_lists_place_is_never_rejected_and_a_medicine_line_with_a_loo
     monkeypatch.setattr(lab_resolve, "resolve", lambda x: placed if "creat" in (x or "").lower() else None)
     fact = T._fact("investigation_order", "Tab Creat 500 mg 1 tab OD", state="in_review", code_status="unmapped", conf=0.4)    # looks like a medicine
     t = jc.build_result(T._inputs([fact], payload=T.PAYLOAD, blocks=blocks))["lab_tests"][0]
-    assert t["gate_recognised"] is True and t["status"] != "rejected" and t["page_support"] is not None and t["page_support"] < 0.5
+    assert t["gate_recognised"] is True and t["page_support"] is not None and t["page_support"] < 0.5
+    # NEW RULE (owner): a test no line reader saw and no second look agrees with is not listed (MEASURED: the whole-page answer adds INR to "PT / APTT")
+    from cdi_adapter.extract.test_names import SECOND_LOOK, UNCONFIRMED
+    assert t["status"] == "rejected" and t["reason"].startswith(UNCONFIRMED)
+    t2 = jc.build_result(T._inputs([fact], payload={**T.PAYLOAD, "_corroborated": ["Tab Creat 500 mg 1 tab OD"]}, blocks=blocks))["lab_tests"][0]
+    assert t2["status"] != "rejected" and t2["reason"].startswith(SECOND_LOOK)       # a second look read it again in enough views: listed
