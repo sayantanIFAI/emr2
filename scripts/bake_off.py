@@ -3,7 +3,8 @@
     1. Qwen readings (pod, main venv):   python scripts/bake_off.py qwen    SET/lines.jsonl SET/qwen.jsonl
     2. LightOn readings (its own venv):  /workspace/lighton-venv/bin/python scripts/lighton_worker.py SET/lines.jsonl SET/lighton.jsonl
     2b. Qwen shown LightOn's reading:    python scripts/bake_off.py qwenfed SET/lines.jsonl SET/lighton.jsonl SET/qwenfed.jsonl
-    3. The comparison:                   python scripts/bake_off.py compare SET/lines.jsonl SET/qwen.jsonl SET/lighton.jsonl SET/report.json [SET/qwenfed.jsonl]
+    2c. Qwen told the doctor's words:    python scripts/bake_off.py memory  SET/lines.jsonl SET/qwenmem.jsonl
+    3. The comparison:                   python scripts/bake_off.py compare SET/lines.jsonl SET/qwen.jsonl SET/lighton.jsonl SET/report.json [SET/qwenfed.jsonl [SET/qwenmem.jsonl]]
 
 ``SET/lines.jsonl`` is the file downloaded from the labelling page (``{"id", "crop", "truth"}``).
 Every number printed is MEASURED on those lines; pass margins are NOT decided here - the report gives the data
@@ -85,6 +86,72 @@ def run_qwen_fed(lines: Path, lighton: Path, out: Path) -> None:
     print(f"qwen fed: {len(rows)} lines, {(time.perf_counter() - t0) / max(1, len(rows)):.3f} s per line (one at a time, MEASURED)")
 
 
+def _group(line_id: str) -> str:
+    """The doctor = the prescription photo the line came from (ids are <photo>_<n>)."""
+    return line_id.rsplit("_", 1)[0]
+
+
+def doctor_vocab(rows: list[dict]) -> dict[str, list[tuple[str, set[str]]]]:
+    """Per doctor: the words in that doctor's OTHER confirmed lines. Used leave-one-out, so a line never sees its own truth."""
+    out: dict[str, list[tuple[str, set[str]]]] = {}
+    for r in rows:
+        toks = {t for t in re.findall(r"[A-Za-z][A-Za-z0-9.\-]*", r["truth"]) if len(t) >= 2}
+        out.setdefault(_group(r["id"]), []).append((r["id"], {t.casefold() for t in toks}))
+    return out
+
+
+def vocab_for(line_id: str, vocab: dict[str, list[tuple[str, set[str]]]]) -> list[str]:
+    words: set[str] = set()
+    for other, toks in vocab.get(_group(line_id), []):
+        if other != line_id:
+            words |= toks
+    return sorted(words)
+
+
+MEMORY_PROMPT = (
+    "This is one line from a medical prescription and may be handwritten. The same doctor has written these words before: {words}. "
+    "They are only hints: use one only if the image really shows it, otherwise write exactly what you see, keeping the doctor's own "
+    "spelling. Write an unreadable character as ?. Output only the transcription on one line."
+)
+
+
+def run_qwen_memory(lines: Path, out: Path) -> None:
+    """The controlled test: the same Qwen, told the words this doctor has confirmed elsewhere (leave-one-out)."""
+    from cdi_adapter.ml.client import get_client
+    from cdi_adapter.recognition.engines import clean_line
+
+    rows = _rows(lines)
+    vocab = doctor_vocab(rows)
+    client = get_client()
+    t0 = time.perf_counter()
+    with out.open("w", encoding="utf-8") as fh:
+        for r in rows:
+            words = vocab_for(r["id"], vocab)
+            err = None
+            try:
+                txt, _ = client.vlm_generate_ex((lines.parent / r["crop"]).read_bytes(),
+                                                MEMORY_PROMPT.format(words=", ".join(words)[:900] or "(none yet)"), max_tokens=64)
+                text = clean_line(next((x.strip() for x in (txt or "").splitlines() if x.strip()), ""))
+            except Exception as exc:  # noqa: BLE001
+                text, err = "", str(exc)[:200]
+            fh.write(json.dumps({"id": r["id"], "text": text, "error": err, "vocab_size": len(words)}, ensure_ascii=False) + chr(10))
+    print(f"qwen with doctor memory: {len(rows)} lines, {(time.perf_counter() - t0) / max(1, len(rows)):.3f} s per line (one at a time, MEASURED)")
+
+
+def snap_to_vocab(text: str, words: list[str]) -> str:
+    """Deterministic memory: a word one or two letters away from exactly ONE of the doctor's confirmed words becomes that word."""
+    from cdi_adapter.recognition.bench_htr import levenshtein
+
+    def fix(tok: str) -> str:
+        core = tok.casefold()
+        if len(core) < 3 or core in words:
+            return tok
+        lim = 1 if len(core) < 6 else 2
+        near = [w for w in words if abs(len(w) - len(core)) <= lim and levenshtein(core, w) <= lim]
+        return near[0] if len(near) == 1 else tok
+    return re.sub(r"[A-Za-z][A-Za-z0-9]*", lambda m: fix(m.group(0)), text)
+
+
 def _setup(name: str, truths: list[str], preds: list[str]) -> dict:
     ok = sum(_norm(t) == _norm(p) for t, p in zip(truths, preds))
     n = len(truths)
@@ -96,7 +163,7 @@ def _setup(name: str, truths: list[str], preds: list[str]) -> dict:
             "precision_lower_bound": round(wilson_lower(ok, n), 4)}
 
 
-def compare(lines: Path, qwen: Path, lighton: Path, out: Path, fed: Path | None = None) -> dict:
+def compare(lines: Path, qwen: Path, lighton: Path, out: Path, fed: Path | None = None, memory: Path | None = None) -> dict:
     truth = {r["id"]: r["truth"] for r in _rows(lines)}
     q = {r["id"]: r for r in _rows(qwen)}
     lo = {r["id"]: r for r in _rows(lighton)}
@@ -148,6 +215,20 @@ def compare(lines: Path, qwen: Path, lighton: Path, out: Path, fed: Path | None 
         extra["D_fixed_a_wrong_qwen_reading"] = sum(_norm(t) != _norm(a) and _norm(t) == _norm(d) for t, a, d in zip(T, qt, D))
         extra["D_copied_lighton_wrongly"] = sum(_norm(t) != _norm(l) and _norm(d) == _norm(l) for t, l, d in zip(T, lt, D))
         extra["_fed_texts"] = D
+    if memory is not None and memory.is_file():
+        m = {r["id"]: r for r in _rows(memory)}
+        E = [m[i]["text"] if i in m else "" for i in ids]
+        vocab = doctor_vocab(_rows(lines))
+        S = [snap_to_vocab(a, vocab_for(i, vocab)) for i, a in zip(ids, qt)]
+        extra["E1_qwen_told_the_doctors_words"] = _setup("Qwen told the doctor's other confirmed words", T, E)
+        extra["E1_changed_a_correct_blind_reading"] = sum(_norm(t) == _norm(a) and _norm(t) != _norm(e) for t, a, e in zip(T, qt, E))
+        extra["E1_fixed_a_wrong_blind_reading"] = sum(_norm(t) != _norm(a) and _norm(t) == _norm(e) for t, a, e in zip(T, qt, E))
+        extra["E2_qwen_blind_then_snapped_to_doctor_words"] = _setup("Qwen blind, then words snapped to the doctor's confirmed words", T, S)
+        extra["E2_changed_a_correct_blind_reading"] = sum(_norm(t) == _norm(a) and _norm(t) != _norm(x) for t, a, x in zip(T, qt, S))
+        extra["E2_fixed_a_wrong_blind_reading"] = sum(_norm(t) != _norm(a) and _norm(t) == _norm(x) for t, a, x in zip(T, qt, S))
+        extra["E_note"] = "leave-one-out: each line sees only the OTHER confirmed lines of the same photo (doctor); small sets overstate how much a doctor repeats"
+        extra["_mem_texts"] = E
+        extra["_snap_texts"] = S
     report = {
         **{k: v for k, v in extra.items() if not k.startswith("_")},
         "lines_compared": len(ids), "status": "MEASURED on the owner's labelled crops; margins NOT applied (owner decides)",
@@ -163,7 +244,9 @@ def compare(lines: Path, qwen: Path, lighton: Path, out: Path, fed: Path | None 
         "lighton_logprob_vs_errors": bands,
         "per_line": [{"id": i, "truth": truth[i], "qwen": q[i]["text"], "lighton": lo[i]["text"],
                       "lighton_mean_logprob": lo[i].get("mean_logprob"),
-                      **({"qwen_fed": extra["_fed_texts"][k]} if "_fed_texts" in extra else {})} for k, i in enumerate(ids)],
+                      **({"qwen_fed": extra["_fed_texts"][k]} if "_fed_texts" in extra else {}),
+                      **({"qwen_doctor_words": extra["_mem_texts"][k], "qwen_snapped": extra["_snap_texts"][k]} if "_mem_texts" in extra else {})}
+                     for k, i in enumerate(ids)],
     }
     out.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
     short = {k: v for k, v in report.items() if k != "per_line"}
@@ -178,8 +261,12 @@ def main(argv: list[str]) -> int:
     if len(argv) == 5 and argv[1] == "qwenfed":
         run_qwen_fed(Path(argv[2]), Path(argv[3]), Path(argv[4]))
         return 0
-    if len(argv) in (6, 7) and argv[1] == "compare":
-        compare(*(Path(a) for a in argv[2:6]), fed=Path(argv[6]) if len(argv) == 7 else None)
+    if len(argv) == 4 and argv[1] == "memory":
+        run_qwen_memory(Path(argv[2]), Path(argv[3]))
+        return 0
+    if len(argv) in (6, 7, 8) and argv[1] == "compare":
+        compare(*(Path(a) for a in argv[2:6]), fed=Path(argv[6]) if len(argv) >= 7 else None,
+                memory=Path(argv[7]) if len(argv) == 8 else None)
         return 0
     print(__doc__)
     return 2
