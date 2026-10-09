@@ -32,17 +32,31 @@ def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9]", "", (s or "").casefold())
 
 
+_PHONE_LABEL = re.compile(r"(?i)^\W*(?:ph|tel|phone|mob|mobile|fax|cell)\W*\d*\W*$")
+
+
+def _placed(text: str) -> bool:
+    """The lab lists (mapping table, national list) place this name EXACTLY: OPG, ECG and X-ray are in the owner's table on purpose. What the
+    lists place is never called "imaging" here."""
+    from . import lab_resolve
+    try:
+        rz = lab_resolve.resolve(text)
+    except Exception:  # noqa: BLE001 - a missing list must not cost the page
+        return False
+    return rz is not None and not getattr(rz, "fuzzy", False)
+
+
 def entry_reason(text: str | None, *, lab_only: bool = True) -> str | None:
     """Why this entry is not a laboratory test, judged from its own words (``None`` = it may be one)."""
     t = text or ""
     if not t.strip():
         return None
+    if _PHONE_LABEL.match(t):
+        return "the printed label of a phone number (Ph.), not a test"
     if _PHYSIO.search(t):
         return "physiotherapy, not a laboratory test"
-    if lab_only and _IMAGING.search(t):
-        return "imaging, not a laboratory test"
-    if lab_only and _CARDIO_NEURO.search(t):
-        return "ECG / EEG type test, not a laboratory test"
+    if lab_only and (_IMAGING.search(t) or _CARDIO_NEURO.search(t)) and not _placed(t):
+        return "imaging / ECG type order the lab lists do not place, not a laboratory test"
     return None
 
 

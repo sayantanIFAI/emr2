@@ -731,7 +731,7 @@ function summaryHtml(r){
       +(t.page_support!=null?'<div class="none">page match '+Math.round(t.page_support*100)+'%</div>':'');
     return '<tr><td>'+(i+1)+'</td><td>'+esc(t.as_written||t.text||"")+'</td><td>'+std+match+'</td><td>'+pr+'</td><td>'+(ctx||'<span class="none">—</span>')+'</td><td>'+st+'</td></tr>';
   }).join("");
-  const droppedNote=dropped.length?'<p class="note">Left out because they look like medicines, not tests: '+dropped.map(t=>esc(t.as_written||t.text||"")).join("; ")+'.</p>':"";
+  const droppedNote=dropped.length?'<p class="note">Left out, not shown as tests: '+dropped.map(t=>esc(t.as_written||t.text||"")+(t.reason?" ("+esc(t.reason)+")":"")).join("; ")+'.</p>':"";
   const unrecNote=unrec.length?'<p class="note">Read from the page but not recognised as a test name, so not listed above (please check the page): '+unrec.map(t=>esc(t.as_written||t.text||"")).join("; ")+'.</p>':"";
   const unconfNote=unconf.length?'<p class="note">The reader suggested these, but nothing on the page supports them, so they are not listed as tests (check the page): '+unconf.map(t=>esc(t.as_written||t.text||"")).join("; ")+'.</p>':"";
   const prepOnly=!labs.length&&prep.length?'<p class="note">Preparation written on the page: '+prep.map(p=>esc(p.text)).join("; ")+'</p>':"";

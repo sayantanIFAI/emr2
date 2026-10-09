@@ -31,7 +31,7 @@ _MEDICINE_LINE = re.compile(r"(?i)\b(?:tabs?|tablets?|caps?|capsules?|syp|syr|in
 # LOINC term, "Blood" is "Blood [Presence] in Urine"), but written on a prescription they are labels. MEASURED on a real page once the
 # national list was loaded: "Height" and "Blood" came out as lab tests.
 _FORM_LABELS = frozenset("height weight pulse bp temp temperature spo2 pr rr age sex date history vitals vital signs name complaint complaints "
-                         "diagnosis blood urine serum plasma stool fluid sample specimen".split())
+                         "diagnosis blood urine serum plasma stool fluid sample specimen ph tel phone mob mobile fax email".split())
 # a word that also names a supplement: the name is a test only beside other test evidence
 _WEAK_WORDS = frozenset("vitamin vit iron calcium zinc magnesium folic potassium sodium pt".split())      # "pt" is also "patient"
 # "25(OH)", "25 OH", "2OH" (the 5 lost): the vitamin D test is written, whatever else the line says
@@ -55,7 +55,8 @@ class Found:
                 "beside": f"found in the page's text beside other tests (read as '{self.as_read}')",
                 "near": f"read as '{self.as_read}' (one letter from {self.test}), written beside other tests",
                 "marker": f"'{self.as_read}' is written: the vitamin D test",
-                "marked": f"printed on the pad and marked by hand ('{self.as_read}')"}[self.why]
+                "marked": f"printed on the pad and marked by hand ('{self.as_read}')",
+                "printed_near": f"a SUGGESTION, not a reading: the printed entry '{self.as_read}' is cut off at the edge of the photo and the closest standard name is {self.test}"}[self.why]
 
 
 def placed_text(gram: str) -> str | None:
@@ -232,15 +233,89 @@ def _by_pen_marks(found: list[tuple[int, Found]], blocks: list[dict[str, Any]] |
     return out
 
 
+_REPORT_HEAD = re.compile(r"(?i)^\W*(?:report|results?)\W*$")
+_STOP_HEAD = re.compile(r"(?i)(?:r[eo]v[il]?ew|adv(?:ice)?|advised|inv(?:estigations?)?|follow\s*up|rx)")
+_SEP = re.compile(r"[,;/+&|]")
+
+
+def _state(b: dict[str, Any]) -> str:
+    rec = b.get("recognition")
+    return str(rec.get("state") or "") if isinstance(rec, dict) else ""
+
+
+def result_label_indexes(blocks: list[dict[str, Any]] | None) -> set[int]:
+    """The printed RESULT fields of a report pad: under a "Report" heading the form prints one test name per line, each waiting for a value
+    (Sonoscan: HDL, LDL, TG, SGPT, Hb% ...). They are labels, not orders. A stack of four or more such single-name lines directly under a
+    "Report" heading, ending where the pad's "Review after" / "Advice" starts, is left out of the scan. MEASURED on a real pad: HDL, TG, SGPT
+    and haemoglobin were listed as ordered tests. Comma lists (the pad's "Review after: FPG, creatinine, lipid profile") are not touched."""
+    boxed = [(i, _box(b)) for i, b in enumerate(blocks or []) if _box(b)]
+    order = [i for i, bb in sorted(boxed, key=lambda kv: (kv[1][1], kv[1][0]))]
+    out: set[int] = set()
+    for pos, i in enumerate(order):
+        if not _REPORT_HEAD.search(str((blocks or [])[i].get("text") or "")):
+            continue
+        stack: list[int] = []
+        misses = 0
+        hb = _box((blocks or [])[i])
+        page_w = max(bb[2] for _k, bb in boxed)
+        for j in order[pos + 1:pos + 30]:
+            bj = _box((blocks or [])[j])
+            if hb is None or bj is None or abs(bj[0] - hb[0]) > 0.12 * page_w:
+                continue                                          # another column of the page (the doctor's handwriting beside the pad)
+            t = str((blocks or [])[j].get("text") or "").strip()
+            if _STOP_HEAD.search(t):
+                break
+            words = re.findall(r"[A-Za-z0-9?%.]+", t)
+            if 1 <= len(words) <= 3 and not _SEP.search(t) and (any(h.kind == "strong" for h in _line_hits(t)) or re.search(r"[-:]\s*$", t)):
+                stack.append(j)
+            else:
+                misses += 1
+                if misses > 14:
+                    break
+        if len(stack) >= 4:
+            out.update(stack)
+    return out
+
+
+def _printed_near(piece: str) -> tuple[str, str] | None:
+    """A printed list entry the photo's edge cut a letter or two from ("IRINE RE" for "URINE RE", "RIC ACID" for "URIC ACID"): the ONE mapping-table
+    name that is at least 82% alike and has the same length within one letter. Printed text only (handwriting is never matched this loosely)."""
+    import difflib
+
+    k = re.sub(r"[^a-z]", "", piece.casefold())
+    if len(k) < 5:
+        return None
+    best: list[tuple[float, str]] = []
+    for key, m in lab_mapping._load().items():                       # noqa: SLF001
+        kk = re.sub(r"[^a-z]", "", key)
+        if len(kk) < 5 or abs(len(kk) - len(k)) > 1:
+            continue
+        r = difflib.SequenceMatcher(None, k, kk).ratio()
+        if r >= 0.82:
+            best.append((r, m.canonical))
+    names = {c for _r, c in best}
+    return (next(iter(names)), piece) if len(names) == 1 else None
+
+
 def scan(blocks: list[dict[str, Any]] | None, colour: Any = None) -> list[Found]:
     """The tests the page's text holds, by position (see the module text). Medicine lines are never looked at. Candidates only.
     ``colour`` is the colour page (an array the size of the picture the text blocks were found in): with it, a test name in a PRE-PRINTED
     list that has a pen mark by it is marked ("marked"), and when at least one printed name on the page is marked the printed names with
     no mark are not orders and are dropped (``marks.py``). A page with no marked printed name is left exactly as it was."""
-    items = [(i, b) for i, b in enumerate(blocks or []) if str(b.get("text") or "").strip()
+    labels = result_label_indexes(blocks)                              # printed result fields of a report pad are not orders
+    items = [(i, b) for i, b in enumerate(blocks or []) if str(b.get("text") or "").strip() and i not in labels
              and not _MEDICINE_LINE.search(str(b["text"])) and not looks_like_medicine(str(b["text"]))]
     hits = [_line_hits(str(b["text"])) for _, b in items]
     found: list[tuple[int, Found]] = []
+    for (idx, b), hh in zip(items, hits):                              # a printed list with an exact test: its cut-off entries are read too
+        if _state(b) == "printed" and _SEP.search(str(b["text"])) and any(h.kind == "strong" for h in hh):
+            have = {re.sub(r"[^a-z0-9]", "", h.as_read.casefold()) for h in hh}
+            for piece in split_tests(str(b["text"])):
+                if re.sub(r"[^a-z0-9]", "", piece.casefold()) in have or placed_text(piece):
+                    continue
+                near = _printed_near(piece)
+                if near:
+                    found.append((idx, Found(near[0], near[1], "printed_near")))
     for group in _groups(items):
         allh = [h for g in group for h in hits[g]]
         strong = sum(h.kind == "strong" for h in allh)

@@ -894,6 +894,13 @@ def extract_document(document_id: str, *, patient_id: str | None = None,
 
     if isinstance(payload, dict):
         payload = _collapse_repeats(_unescape(payload))
+    if isinstance(payload, dict) and isinstance(payload.get("patient"), dict):
+        from .fields import normalise_age
+        fixed_age, sex_hint = normalise_age(payload["patient"].get("age_text"))
+        if fixed_age != payload["patient"].get("age_text"):
+            payload["patient"]["age_text"] = fixed_age         # "74/1" is an age of 74 years, not "74 over 1"
+            if sex_hint and not payload["patient"].get("sex"):
+                payload["patient"]["sex"] = sex_hint
     if not settings.abha_enabled and isinstance(payload, dict) and isinstance(payload.get("patient"), dict):
         payload["patient"]["abha_id"] = None        # never used, whatever the model wrote: not for matching, not stored
 
@@ -953,7 +960,8 @@ def extract_document(document_id: str, *, patient_id: str | None = None,
             payload["investigations"] = test_cluster.drop_composites(payload.get("investigations") or [], listed_entries)
         # imaging / ECG / physiotherapy, a clinic's printed list of services and the words of a medicine line are not laboratory tests:
         # they stay in the result as rejected with the reason, and are not put to the choose-from-list step
-        from . import not_lab
+        from . import department, not_lab
+        payload["_department"] = department.detect(department.header_texts(page1_blocks))    # from the printed header only; None when it shows none
         payload["_not_lab"] = not_lab.classify(names, blocks, lab_only=settings.lab_tests_only)
         if rerouted_why:
             payload["_rerouted"] = rerouted_why

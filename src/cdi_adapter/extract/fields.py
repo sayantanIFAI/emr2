@@ -148,6 +148,21 @@ def parse_date_text(s: str) -> date | None:
         return None
 
 
+_AGE_SLASH = re.compile(r"^\s*(\d{1,3})\s*(y|yr|yrs|years?)?\s*[/|\\]\s*([A-Za-z0-9|]{1,6})?\s*$", re.IGNORECASE)
+
+
+def normalise_age(text: Any) -> tuple[Any, str | None]:
+    """``"73 yrs / Female"`` read as ``"74/1"`` (MEASURED on a real page: the bar between age and sex was taken for a slash and the sex for a digit)
+    is an age of 74 years: the number before the slash, with its unit, and the sex only when the tail is a clear M / F / Male / Female. A text
+    that is not of this shape is returned unchanged."""
+    m = _AGE_SLASH.match(str(text or ""))
+    if not m:
+        return text, None
+    tail = (m.group(3) or "").strip().casefold()
+    sex = "F" if tail in ("f", "female") else "M" if tail in ("m", "male") else None
+    return f"{int(m.group(1))} {m.group(2) or 'yrs'}", sex
+
+
 def _age_years(text: Any) -> int | None:
     m = re.fullmatch(r"\s*(\d{1,3})\s*(?:y|yr|yrs|year|years)?\s*", str(text or ""), re.IGNORECASE)
     if m:

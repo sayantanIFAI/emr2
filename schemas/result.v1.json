@@ -74,7 +74,7 @@
       "type": "array",
       "items": {
         "type": "object", "additionalProperties": false, "required": ["code", "line", "text"],
-        "properties": {"code": {"enum": ["prompt_injection_suspected"]}, "line": {"type": "integer"}, "text": {"type": "string"}}
+        "properties": {"code": {"enum": ["prompt_injection_suspected", "unreadable_order_line"]}, "line": {"type": "integer"}, "text": {"type": "string"}}
       }
     },
     "patient": {

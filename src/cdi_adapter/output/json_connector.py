@@ -277,6 +277,8 @@ def build_result(inp: ResultInputs) -> dict[str, Any]:
     second_look = {_norm_name(x) for x in payload.get("_second_look") or [] if isinstance(x, str)}
     text_scan = {_norm_name(k): v for k, v in (payload.get("_text_scan") or {}).items() if isinstance(k, str) and isinstance(v, str)}
     not_lab = {_norm_name(k): v for k, v in (payload.get("_not_lab") or {}).items() if isinstance(k, str) and isinstance(v, str)}
+    from ..extract import department as _department
+    dept = payload.get("_department") if isinstance(payload.get("_department"), str) else None
     verified = {_norm_name(k): float(v) for k, v in (payload.get("_verify") or {}).items() if isinstance(k, str) and isinstance(v, (int, float))}
     for t in buckets["lab_tests"]:
         key = t["as_written"]
@@ -289,6 +291,13 @@ def build_result(inp: ResultInputs) -> dict[str, Any]:
                 t["status"] = "needs_check"
                 t["reason"] = (f"the model doubts this is written on the page (probability {pv:.2f}): check it first"
                                + (f"; {t['reason']}" if t.get("reason") else ""))
+        dn = _department.note(t.get("standard_name") or key, dept) if t.get("status") != "rejected" else None
+        if dn is not None:
+            if dn[0] == "unusual":
+                t["status"] = "needs_check"
+                t["reason"] = dn[1] + (f"; {t['reason']}" if t.get("reason") else "")
+            else:
+                t["reason"] = (t["reason"] + "; " if t.get("reason") else "") + dn[1]      # supporting information only
         if why_not and t.get("status") != "rejected":
             t["status"] = "rejected"                       # kept, not shown as a test: imaging / ECG / physiotherapy / a service list / a medicine line
             t["reason"] = "not a laboratory test: " + why_not
@@ -354,6 +363,8 @@ def build_result(inp: ResultInputs) -> dict[str, Any]:
                 i["earlier_readings"] = earlier[i["fact_id"]]
 
     items = [i for lst in (*buckets.values(), other) for i in lst]
+    from ..extract import unread
+    unread_flags = unread.flags(inp.blocks)                       # a handwritten line nobody could read, where orders are written
     name_v = _patient_name(doc, checks["patient"]["name"])
     n_check = sum(1 for i in items if i["status"] == "needs_check") + len(checks["review"])
     if name_v["status"] == "needs_check" and checks["patient"]["name"]["status"] != "needs_check":
@@ -366,7 +377,7 @@ def build_result(inp: ResultInputs) -> dict[str, Any]:
         status = "error"
     elif doc.get("status") not in _FINISHED:
         status = "processing"
-    elif n_check or any(i["status"] == "rejected" for i in items) or _capture_flagged(inp.pages):
+    elif n_check or unread_flags or any(i["status"] == "rejected" for i in items) or _capture_flagged(inp.pages):
         status = "needs_check"
     elif not items:
         status = "incomplete"          # finished, but nothing could be read
@@ -395,7 +406,7 @@ def build_result(inp: ResultInputs) -> dict[str, Any]:
         "needs_check_count": n_check,
         "quality": quality,
         "extraction_incomplete": bool(payload.get("_partial")),
-        "flags": checks["flags"],
+        "flags": [*checks["flags"], *unread_flags],
         "patient": {**{k: _v(p[k]) for k in ("name", "age_text", "dob", "sex", "mrn", "phone", "address", "abha_id")},
                     "name": name_v},
         "doctor": {**{k: _v(d[k]) for k in ("name", "reg_no", "department", "designation", "qualification")},

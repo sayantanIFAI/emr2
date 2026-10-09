@@ -315,6 +315,37 @@ def name_prompt() -> str:
         'Answer ONLY as JSON: {"name": "..."}'])
 
 
+def name_row_box(best: dict[str, Any], blocks: list[dict[str, Any]] | None) -> tuple[int, int, int, int]:
+    """The WHOLE row the best-matching piece of the name sits in. The line detector often cuts a handwritten name into word-sized pieces
+    ("Mrs." | "Sumita" | "Gupta" | "Gangopadhyay"), and the piece that shares the most words with the first reading is only the last word.
+    MEASURED on a real page: the name line shown to the front desk was "Gangopadhyay" alone and the re-reads came out as "Gango Jadhav".
+    After a title (Mr / Mrs / Ms) the rest of the row is the name, so the crop is the union of every piece whose centre is on the same row,
+    joined while the gap between neighbours stays within four line heights (a printed "Age" label far to the right is not pulled in)."""
+    x0, y0, x1, y1 = (int(v) for v in best["bbox"])
+    lh = max(8, y1 - y0)
+    cy = (y0 + y1) / 2
+    row = []
+    for b in blocks or []:
+        try:
+            bx0, by0, bx1, by1 = (int(float(v)) for v in b["bbox"][:4])
+        except (KeyError, TypeError, ValueError, IndexError):
+            continue
+        if abs((by0 + by1) / 2 - cy) <= 0.7 * lh and (by1 - by0) <= 3 * lh:
+            row.append((bx0, by0, bx1, by1))
+    row.sort()
+    left, right, top, bottom = x0, x1, y0, y1
+    for _ in range(len(row)):                                         # grow outwards while the next piece is within the gap
+        grew = False
+        for bx0, by0, bx1, by1 in row:
+            if bx0 < left and left - bx1 <= 4 * lh or bx1 > right and bx0 - right <= 4 * lh:
+                left, right = min(left, bx0), max(right, bx1)
+                top, bottom = min(top, by0), max(bottom, by1)
+                grew = True
+        if not grew:
+            break
+    return left, top, right, bottom
+
+
 def name_crops(image: bytes, blocks: list[dict[str, Any]] | None, name: str | None) -> list[bytes]:
     """The page line the patient's name is on, cut out and enlarged to each of ``NAME_SCALES`` (the name line is found as the
     OCR block that shares the most words with the name already read; with none, the top third of the page)."""
@@ -338,7 +369,7 @@ def name_crops(image: bytes, blocks: list[dict[str, Any]] | None, name: str | No
         if s > score:
             best, score = b, s
     if best is not None and score >= 1:
-        x0, y0, x1, y1 = (int(v) for v in best["bbox"])
+        x0, y0, x1, y1 = name_row_box(best, blocks)
         px, py = max(30, int(0.03 * w)), max(14, int(0.012 * h))
         box = (max(0, x0 - px), max(0, y0 - py), min(w, x1 + px), min(h, y1 + py))
     else:
