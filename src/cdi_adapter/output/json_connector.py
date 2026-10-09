@@ -387,6 +387,17 @@ def build_result(inp: ResultInputs) -> dict[str, Any]:
             t.update(code=up.get("code"), code_system=up.get("code_system"), code_display=up.get("code_display"),
                      code_status=up.get("code_status"))
 
+    listed: dict[str, str] = {}                      # one standard test is listed once: "Creat" read beside "Creatinine" is the same test
+    for t in buckets["lab_tests"]:
+        sn = (t.get("standard_name") or "").strip().casefold()
+        if not sn or t.get("status") == "rejected":
+            continue
+        if sn in listed:
+            t["status"] = "rejected"
+            t["reason"] = f"the same test is already listed above ('{listed[sn]}')"
+        else:
+            listed[sn] = t.get("as_written") or t.get("standard_name") or sn
+
     earlier: dict[str, list[dict[str, Any]]] = {}
     for c in inp.corrections:                      # the replaced reading stays referenced (OUT-S2 AC4)
         earlier.setdefault(str(c["fact_id"]), []).append(

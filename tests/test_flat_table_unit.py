@@ -58,3 +58,22 @@ def test_the_patient_phone_is_the_number_typed_at_upload_never_one_read_from_the
     assert typed["value"] == "9830012345" and typed["status"] == "checked"
     none_typed = jc.build_result(jc.ResultInputs(document=base, facts=[], blocks=[], pages=[], payload=page_phone))["patient"]["phone"]
     assert none_typed["value"] is None and none_typed["status"] == "absent"
+
+
+def test_one_standard_test_is_listed_once():
+    from cdi_adapter.extract import lab_resolve
+    from cdi_adapter.output import json_connector as jc
+    import test_json_connector_unit as T
+
+    creat = lab_resolve.Resolved("test", "2160-0", "bound", ("2160-0",), "Creatinine", "mapping", False)
+    orig = lab_resolve.resolve
+    lab_resolve.resolve = lambda x: creat if "creat" in (x or "").lower() else orig(x)
+    try:
+        facts = [T._fact("investigation_order", "Creatinine", state="in_review", code_status="unmapped", conf=0.4),
+                 T._fact("investigation_order", "Creat", state="in_review", code_status="unmapped", conf=0.4)]
+        facts[1]["id"] = "2"
+        blocks = [{"text": "Creatinine Creat", "page_id": "p1"}]
+        tests = jc.build_result(T._inputs(facts, payload=T.PAYLOAD, blocks=blocks))["lab_tests"]
+        assert [t["status"] != "rejected" for t in tests] == [True, False] and "already listed" in tests[1]["reason"]
+    finally:
+        lab_resolve.resolve = orig
