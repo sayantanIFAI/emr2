@@ -17,7 +17,7 @@ def test_compare_three_setups(tmp_path):
                               for i, (t, lp) in enumerate([("CBC", -0.1), ("LFT", -0.2), ("FPS", -2.0), ("TSX", -0.3)])])
     r = bake_off.compare(tmp_path / "lines.jsonl", tmp_path / "q.jsonl", tmp_path / "l.jsonl", tmp_path / "r.json")
     assert r["lines_compared"] == 4
-    assert r["A_qwen_alone"]["silent_errors"] == 1 and r["B_lighton_alone"]["silent_errors"] == 2
+    assert r["A_qwen_alone"]["silent_errors"] == 1 and r["B_lighton_alone_first_line"]["silent_errors"] == 2
     c = r["C_both_together"]
     assert c["accepted"] == 3 and c["sent_to_a_person"] == 1
     assert c["silent_errors"] == 1          # both said TSX: agreement does not make it right
