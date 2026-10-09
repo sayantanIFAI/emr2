@@ -113,8 +113,16 @@ class _Hit:
 _HEADING = re.compile(r"(?i)\b(?:adv(?:ice|ised)?|inv(?:estigations?)?|ix)\b\s*[:\-\u2013\u2014]*")
 
 
+def _has_value(line: str) -> bool:
+    from .results_written import _spans
+
+    return bool(_spans(line))
+
+
 def _line_hits(line: str, long_rule: bool = True) -> list[_Hit]:
     """Every test-like thing in one line: the longest run of up to three words the lists place wins, and the line goes on."""
+    from .results_written import clean_entry
+    line = clean_entry(line)[0] if _has_value(line) else line          # a value written next to a name makes it a result, not a test to be done
     heading = _HEADING.search(line) if long_rule else None
     if heading and line[heading.end():].strip():
         before = _line_hits(line[:heading.start()], long_rule) if line[:heading.start()].strip() else []

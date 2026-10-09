@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -842,6 +843,17 @@ _PREFETCH: dict[str, Any] = {}
 _prefetch_pool = None
 
 
+class _Steps(dict):
+    """Seconds spent in each step of one extraction (kept in the stored answer as ``_timings``)."""
+
+    def run(self, name: str, fn, *a, **k):
+        t0 = time.perf_counter()
+        try:
+            return fn(*a, **k)
+        finally:
+            self[name] = round(self.get(name, 0.0) + time.perf_counter() - t0, 2)
+
+
 def prefetch_main_call(document_id: str) -> bool:
     """Start the main page call NOW, with the text the printed-text reader already found, so it runs while the handwritten lines are being read
     (the call takes about 5 s and used to wait for those readings). The answer is kept for ``extract_document``, which uses it only when the page
@@ -917,6 +929,8 @@ def extract_document(document_id: str, *, patient_id: str | None = None,
         log.info("extract_no_schema", document_id=document_id, doc_type=cls["doc_type"])
         return ExtractResult(document_id, cls["doc_type"], 0, skipped=True)
 
+    steps = _Steps()
+    t_start = time.perf_counter()
     schema_id, schema = loaded
     prompt = build_extraction_prompt(cls["doc_type"], blocks)
     blkmap = block_id_map(blocks)
@@ -943,7 +957,7 @@ def extract_document(document_id: str, *, patient_id: str | None = None,
             if got is not None:
                 payload, served_model = got
             else:
-                payload, served_model = client.vlm_json_ex(
+                payload, served_model = steps.run("main_answer", client.vlm_json_ex,
                     image, prompt, schema, max_tokens=max_tokens_for(cls["doc_type"]),
                     retries=settings.extract_retries)
             if slim and isinstance(payload, dict):
@@ -956,6 +970,24 @@ def extract_document(document_id: str, *, patient_id: str | None = None,
 
     if isinstance(payload, dict):
         payload = _collapse_repeats(_unescape(payload))
+    if isinstance(payload, dict):
+        # a value written next to a test (Hb-11.9, CRP-0.02, TLC 6900, +ve / -ve) is a RESULT already done, never a test to be done (owner's rule)
+        from . import results_written
+        written: list[str] = []
+        for _key in ("investigations", "advice"):
+            if not isinstance(payload.get(_key), list):
+                continue
+            kept = []
+            for it in payload[_key]:
+                txt = it.get("text") if isinstance(it, dict) else it
+                clean, removed = results_written.clean_entry(txt if isinstance(txt, str) else "")
+                written += removed
+                if removed and not clean:
+                    continue
+                kept.append(({**it, "text": clean} if isinstance(it, dict) else clean) if removed else it)
+            payload[_key] = kept
+        if written:
+            payload["_results_written"] = written
     if isinstance(payload, dict) and slim and settings.extract_compact_answer:
         from . import evidence as _evidence
         _evidence.attach(payload, blocks)                   # the links to the OCR blocks, found here instead of written by the model
@@ -986,11 +1018,11 @@ def extract_document(document_id: str, *, patient_id: str | None = None,
         from . import header
         header.fill_patient(payload, page1_blocks)  # a patient printed in the header with age and sex (Apollo Sugar Clinics), when the model found none
     if isinstance(payload, dict) and isinstance(payload.get("patient"), dict) and cls["doc_type"] in ("prescription", "opd_note", "referral"):
-        _check_the_name(client, page1_image, page1_blocks, payload, _both_pictures(pages[0], page1_image))     # the name is on the first page
+        steps.run("name", _check_the_name, client, page1_image, page1_blocks, payload, _both_pictures(pages[0], page1_image))     # the name is on the first page
         if settings.age_sex_reread:
             from . import age_sex
             try:
-                age_sex.apply(client, page1_image, page1_blocks, payload)          # "74/F" read from its own crop at three sizes
+                steps.run("age_sex", age_sex.apply, client, page1_image, page1_blocks, payload)          # "74/F" read from its own crop at three sizes
             except Exception as exc:  # noqa: BLE001 - an extra: never cost the document
                 log.warning("age_sex_failed", document_id=document_id, error=str(exc)[:160])
 
@@ -1025,7 +1057,9 @@ def extract_document(document_id: str, *, patient_id: str | None = None,
                 listed_entries.append((name, as_read, placed))
         colour = None if not settings.marks_enabled else _colour_page(pages[latest_no - 1] if len(pages) > 1 and 1 <= latest_no <= len(pages) else pages[0], image)     # for the pen marks
         corroborated: set[str] = set()
-        extra = resolve_llm.followup_tests(client, image, fu_text, names, focus_blocks, colour=colour, corroborated=corroborated)    # looks even when no follow-up was found
+        from . import results_written as _rw
+        extra = steps.run("second_look", resolve_llm.followup_tests, client, image, fu_text, names, focus_blocks, colour=colour, corroborated=corroborated)    # looks even when no follow-up was found
+        extra = [e for e in extra if not _rw.is_result_entry(e)]      # the second look copies a result as readily as an order
         payload["_corroborated"] = sorted(corroborated)           # tests of the main answer that the enlarged second look read again in enough views
         if extra:                          # tests written with the follow-up line, found by the focused second look
             payload.setdefault("investigations", []).extend({"text": t, "evidence": [], "source": "second_look"} for t in extra)
@@ -1043,9 +1077,14 @@ def extract_document(document_id: str, *, patient_id: str | None = None,
             payload["_rerouted"] = rerouted_why
         names = [n for n in names if n not in payload["_not_lab"]]
         if settings.verify_tests_enabled and names:
+            # the direct question is only asked of a test no line reader saw (the others already have the page's own text behind them): about
+            # 10 fewer model calls per page (MEASURED: the extra checks had made a page take 18-21 s in the extract step)
             from . import verify
-            payload["_verify"] = verify.verify_tests([image], names[:40])      # {name: the model's probability that it is written here as an order}
-        payload["_test_resolved"] = resolve_llm.resolve_tests(client, image, names)
+            from .test_names import is_grounded
+            page_text = " ".join(str(b.get("text") or "") for b in blocks)
+            unseen = [n for n in names if not is_grounded(n, page_text)]
+            payload["_verify"] = steps.run("verify", verify.verify_tests, [image], unseen[:12]) if unseen else {}      # {name: the model's probability that it is written here as an order}
+        payload["_test_resolved"] = steps.run("choose_from_list", resolve_llm.resolve_tests, client, image, names)
         # the same for medicines: a name close to reference medicine names is a CHOICE among them, never free text
         meds = [(_coded_text(m)[0] if not isinstance(m, dict) else (m.get("drug_text") or m.get("text") or m.get("name") or ""))
                 for m in payload.get("medications") or []]
@@ -1118,6 +1157,9 @@ def extract_document(document_id: str, *, patient_id: str | None = None,
         from ..ml.client import last_raw_answer
         from ..provenance import engine_versions, prompt_version
 
+        if isinstance(payload, dict):
+            steps["total_extract"] = round(time.perf_counter() - t_start, 2)
+            payload["_timings"] = dict(steps)                  # where the seconds of this extraction went
         ext_id = repo.insert_extraction(
             sess, document_id=document_id, schema_name=schema_id,
             schema_version="v3", payload=payload,

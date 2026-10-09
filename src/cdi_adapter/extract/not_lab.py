@@ -79,6 +79,12 @@ def _blocks_with(key: str, blocks: list[dict[str, Any]]) -> list[tuple[str, bool
 
 
 def line_reason(key: str, blocks: list[dict[str, Any]] | None, *, lab_only: bool = True) -> str | None:
+    from .results_written import page_result_reason
+
+    return _line_reason(key, blocks, lab_only=lab_only) or page_result_reason(key, blocks)
+
+
+def _line_reason(key: str, blocks: list[dict[str, Any]] | None, *, lab_only: bool = True) -> str | None:
     """Why a name came from a line that is not an order for a laboratory test: EVERY page line that holds it is an imaging / physio line, a
     printed list of the clinic's services, or a medicine line. A name that also stands in a line of its own is left alone."""
     if not blocks:

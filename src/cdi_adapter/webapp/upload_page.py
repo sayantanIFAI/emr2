@@ -248,7 +248,10 @@ function showTab(name){
   const ex=name==="ex";
   $("#panel-up").hidden=ex; $("#panel-ex").hidden=!ex;
   for(const [id,on] of [["#tab-up",!ex],["#tab-ex",ex]]){ const t=$(id); t.setAttribute("aria-selected",String(on)); t.tabIndex=on?0:-1; }
-  if(ex){ NEWCOUNT=0; badge(); }
+  if(ex){ NEWCOUNT=0; badge();
+    // the prescription just read is in the table straight away: its mobile and token number are filled in, so the tab is never empty after a read
+    const done=JOBS.find(x=>x.finished&&!x.err);
+    if(done&&!$("#fl-phone").value&&!$("#fl-token").value){ $("#fl-phone").value=done.phone; $("#fl-token").value=done.token; flatSearch(); } }
   try{ history.replaceState(null,"",ex?"#extracted":"#upload"); }catch(e){}
 }
 function badge(){ const b=$("#ex-badge"); b.hidden=!NEWCOUNT; b.textContent=NEWCOUNT?(NEWCOUNT+" new"):""; }
