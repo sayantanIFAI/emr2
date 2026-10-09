@@ -43,3 +43,10 @@ def test_a_value_in_the_next_piece_of_the_same_row_counts():
 def test_ordinary_advice_with_a_number_is_not_a_result():
     for text in ["Stop smoking - 2 weeks", "Diet - 1600 kcal per day", "Walk for 30 minutes", "Take rest - 3 days", "Brisk walk 30-45 min/day"]:
         assert W.clean_entry(text) == (text, []), text
+
+
+def test_a_middle_dot_between_name_and_value_and_a_glued_ordered_list():
+    assert W.is_result_entry("Hb·11.9") and W.is_result_entry("Creat·0.35")
+    blocks = [{"text": "?CRP-0.02 (<0.8)"}, {"text": "4CBCCRP"}, {"text": "Creatinine ? SAPT/"}]
+    assert W.page_result_reason("CRP", blocks) is None                 # written in the ordered list too, glued to CBC by the reader
+    assert W.page_result_reason("Creatinine", blocks) is None

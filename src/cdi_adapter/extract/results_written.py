@@ -23,7 +23,7 @@ _NUM = r"[<>~≤≥]?\s*\d+(?:[.,·]\d+)?"
 _UNIT = (r"(?:\s*(?:%|lacs?|lakhs?|mg/dl|g/dl|gm/dl|u/l|iu/l|mmol/l|meq/l|ng/ml|pg/ml|ug/dl|µg/dl|fl|pg|/cumm|/cu\s*mm|mm/hr|cells?)\b)?"
          r"(?:\s*\([^)]{0,14}\))?")
 # NAME - 11.9 / NAME : 0.02 / NAME = 9100 / NAME(-28/22): a hyphen, colon or equals sign and then a number
-_HYPHEN = re.compile(r"(?P<w>[A-Za-z][A-Za-z0-9+.]{0,15})\s*\(?\s*[-–:=]\s*\(?\s*(?:" + _NUM + r")(?:\s*[/\-]\s*\d+(?:[.,·]\d+)?)?" + _UNIT, re.I)
+_HYPHEN = re.compile(r"(?P<w>[A-Za-z][A-Za-z0-9+.]{0,15})\s*\(?\s*[-–:=·]\s*\(?\s*(?:" + _NUM + r")(?:\s*[/\-]\s*\d+(?:[.,·]\d+)?)?" + _UNIT, re.I)
 # a known analyte then a bare number: LDL 94 / LDL94 / Hb 11.9 (not "FBS 12 hrs": a duration or a preparation)
 _BARE = re.compile(r"(?P<w>ft3|ft4|t3|t4|b12|hba1c|hbaic|hba1|[A-Za-z]+)" + r"\s*(?P<n>" + _NUM + r")(?![\d.,\u00b7])" + _UNIT +
                    r"(?!\s*(?:hrs?|hours?|days?|d\b|wks?|weeks?|months?|mo\b|min|times|x\b))", re.I)
@@ -99,18 +99,22 @@ def _after_has_value(after: str, next_piece: str = "") -> bool:
 
 def page_result_reason(key: str, blocks: list[dict[str, Any]] | None) -> str | None:
     """The reason when EVERY occurrence of the name on the page has a value after it (a result already written), else None. A name that is written
-    once without a value (the doctor's ordered list) is a test whatever else the page says. A name found nowhere in the page text is left alone."""
+    once without a value (the doctor's ordered list) is a test whatever else the page says, also when a reader glued it to its neighbour
+    ("CBCCRP"). A name found nowhere in the page text is left alone."""
     k = re.sub(r"\s+", " ", (key or "").strip())
     if len(re.sub(r"[^A-Za-z0-9]", "", k)) < 2 or not blocks:
         return None
-    pat = re.compile(r"(?<![A-Za-z0-9])" + re.escape(k).replace(r"\ ", r"[\s.\-]*") + r"(?![A-Za-z])", re.I)
+    body = re.escape(k).replace(r"\ ", r"[\s.\-]*")
+    strict = re.compile(r"(?<![A-Za-z0-9])" + body + r"(?![A-Za-z])", re.I)
+    loose = re.compile(body + r"(?![A-Za-z])", re.I) if len(k) >= 3 else strict
     seen, valued, example = 0, 0, ""
     for i, b in enumerate(blocks):
         text = str(b.get("text") or "")
-        for m in pat.finditer(text):
+        for m in loose.finditer(text):
             seen += 1
+            is_strict = bool(strict.match(text, m.start()))
             nxt = str(blocks[i + 1].get("text") or "") if i + 1 < len(blocks) and not text[m.end():].strip() else ""
-            if _after_has_value(text[m.end():], nxt):
+            if is_strict and _after_has_value(text[m.end():], nxt):
                 valued += 1
                 example = example or text[m.start():min(len(text), m.end() + 14)].strip()
     if seen and valued == seen:
