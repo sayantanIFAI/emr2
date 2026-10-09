@@ -313,6 +313,13 @@ def _stage1(prog: DocProg, fn: str, raw: bytes, abha: str | None) -> None:
         prog.doc_type = c.doc_type
         prog.stage("classify", "done")
 
+        if settings.prefetch_main_call:
+            try:
+                from ..extract.service import prefetch_main_call
+                prefetch_main_call(res.document_id)       # the main page call runs while the handwritten lines are read below
+            except Exception as exc:  # noqa: BLE001 - an early start is an extra: the normal call is made later
+                log.warning("prefetch_not_started", error=str(exc)[:200])
+
         # v2: the region pass always runs - printed lines keep their RapidOCR text and
         # only handwritten/mixed/uncertain line crops go to TrOCR + Qwen (ARCHITECTURE §15).
         # legacy: only a page the classifier calls handwritten gets page-level VLM OCR

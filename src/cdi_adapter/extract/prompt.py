@@ -156,7 +156,37 @@ def slim_schema(schema: dict[str, Any]) -> dict[str, Any]:
     props["earlier_entries"] = copy.deepcopy(_EARLIER_ENTRIES)
     if isinstance(s.get("required"), list):
         s["required"] = [r for r in s["required"] if r in props]
+    from ..config import settings
+
+    if settings.extract_compact_answer:
+        s = _compact(s)
     return s
+
+
+_CODED_REF_END = "/coded"
+_MIN_CODED = {"type": "object", "additionalProperties": False, "properties": {"text": {"type": ["string", "null"]}}, "required": ["text"]}
+
+
+def _compact(node: Any) -> Any:
+    """The answer without the parts a later step fills in: no ``evidence`` lists (the program links the OCR blocks afterwards, extract/evidence.py)
+    and no ``system`` / ``code`` / ``display`` of a coded item (the prompt tells the model to leave them null; a later step assigns codes). Fewer
+    tokens written = a faster answer (about 70 tokens per second on the pod)."""
+    import copy
+
+    if isinstance(node, list):
+        return [_compact(x) for x in node]
+    if not isinstance(node, dict):
+        return node
+    ref = node.get("$ref")
+    if isinstance(ref, str) and ref.endswith(_CODED_REF_END):
+        return copy.deepcopy(_MIN_CODED)
+    out = {k: _compact(v) for k, v in node.items()}
+    props = out.get("properties")
+    if isinstance(props, dict):
+        out["properties"] = {k: v for k, v in props.items() if k != "evidence"}
+        if isinstance(out.get("required"), list):
+            out["required"] = [r for r in out["required"] if r != "evidence"]
+    return out
 
 
 _EXTRA_SLIM = (
@@ -201,13 +231,18 @@ def load_schema(doc_type: str) -> tuple[str, dict[str, Any]] | None:
         _cache[fname] = json.loads((_SCHEMA_DIR / fname).read_text(encoding="utf-8"))
     full = _cache[fname]
     if slim_active(doc_type):
-        key = fname + "#mlp1"
+        from ..config import settings as _s
+
+        key = fname + "#mlp1" + ("c" if _s.extract_compact_answer else "")
         if key not in _cache:
             _cache[key] = slim_schema(full)
         return full["$id"], _cache[key]
     return full["$id"], full
 
 
+_EVIDENCE_RULE = """- Every non-null value you emit MUST carry an "evidence" array of OCR block ids
+  (like "b12"). If nothing supports a value, omit it."""
+_EVIDENCE_COMPACT = """- Write only the values themselves: no "evidence" lists and no "system" / "code" fields. If nothing on the page supports a value, omit it."""
 _BASE = """\
 Extract structured clinical data from this scanned {doc_type}.
 
@@ -218,8 +253,7 @@ Rules:
   step assigns standard codes). Never put the phrase in "code".
 - Always include "extracted_at_confidence" (0..1) at the top level.
 - Copy numbers, units, drug names and dosing notation EXACTLY as written.
-- Every non-null value you emit MUST carry an "evidence" array of OCR block ids
-  (like "b12"). If nothing supports a value, omit it.
+__EVIDENCE_RULE__
 - Do NOT infer, expand abbreviations, or add clinical judgement.
 - Use ONLY what is on this page: no general knowledge, no usual dose or usual fasting time, no
   value that is not written. If a field is not written or cannot be read, use null.
@@ -258,7 +292,9 @@ def build_extraction_prompt(doc_type: str, ocr_blocks: list[dict[str, Any]], onl
         # from a bill number or a company id) and is told to leave it empty
         extra = extra.replace("`phone`, `address` and `abha_id`", "`phone` and `address`")
         extra += "\nDo NOT read an ABHA / ABDM health id: leave `abha_id` null."
-    return (_BASE.format(doc_type=doc_type, ocr="\n".join(lines) or "(none)") + extra)
+    compact = slim_active(doc_type) and settings.extract_compact_answer
+    base = _BASE.replace("__EVIDENCE_RULE__", _EVIDENCE_COMPACT if compact else _EVIDENCE_RULE)
+    return (base.format(doc_type=doc_type, ocr="\n".join(lines) or "(none)") + extra)
 
 
 def block_id_map(ocr_blocks: list[dict[str, Any]]) -> dict[str, str]:

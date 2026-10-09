@@ -226,6 +226,26 @@ def _same_test(a: str, b: str) -> bool:
     return a == b or (min(len(a), len(b)) >= 6 and difflib.SequenceMatcher(None, a, b).ratio() >= 0.8)
 
 
+def texts_agree(known: list[str], blocks: list[dict[str, Any]] | None, colour: Any = None) -> bool:
+    """True when the page's own text and the main answer name EXACTLY the same tests (at least one, every one placed by the lab lists) and no
+    handwritten line near an order was left unreadable. Then the enlarged second look has nothing to add and is skipped (about 10 model calls).
+    Anything else (the text finds nothing, the answer finds nothing, they differ, a line could not be read) = the second look runs."""
+    from . import unread
+
+    if unread.unreadable_order_lines(blocks):
+        return False
+    scan = [norm(x) for x in tests_from_text(blocks, colour)]
+    placed_known = []
+    for k in known:
+        rz = lab_resolve.resolve(k)
+        if rz is not None and not getattr(rz, "fuzzy", False):
+            placed_known.append(norm(k))
+    if not scan or not placed_known:
+        return False
+    return (all(any(_same_test(s, k) for k in placed_known) for s in scan)
+            and all(any(_same_test(k, s) for s in scan) for k in placed_known))
+
+
 def followup_tests(client: Any, image: bytes, follow_up: str | None, known: list[str],
                    blocks: list[dict[str, Any]] | None = None, colour: Any = None) -> list[str]:
     """Tests the full-page answer missed. Lab tests are the point of the product and the doctor writes them anywhere (beside
@@ -238,12 +258,16 @@ def followup_tests(client: Any, image: bytes, follow_up: str | None, known: list
 
     if not settings.followup_second_look:
         return []
-    jobs: list[tuple[bytes, str, int]] = [(v, anywhere_prompt(), i) for i, v in enumerate(page_views(image))]     # (picture, question, view)
-    if follow_up and str(follow_up).strip():
-        try:
-            jobs.append((followup_region(image, blocks, str(follow_up)), followup_prompt(str(follow_up)), len(jobs)))
-        except Exception as exc:  # noqa: BLE001
-            log.warning("followup_region_failed", error=str(exc)[:200])
+    jobs: list[tuple[bytes, str, int]] = []
+    if settings.skip_second_look_when_agree and texts_agree(known, blocks, colour):
+        log.info("followup_second_look_skipped", reason="the page text and the main answer name the same tests")
+    else:
+        jobs = [(v, anywhere_prompt(), i) for i, v in enumerate(page_views(image))]     # (picture, question, view)
+        if follow_up and str(follow_up).strip():
+            try:
+                jobs.append((followup_region(image, blocks, str(follow_up)), followup_prompt(str(follow_up)), len(jobs)))
+            except Exception as exc:  # noqa: BLE001
+                log.warning("followup_region_failed", error=str(exc)[:200])
 
     jobs = [j for j in jobs for _ in range(max(1, settings.second_look_repeats))]      # the same view, asked again: answers differ
 
@@ -255,8 +279,11 @@ def followup_tests(client: Any, image: bytes, follow_up: str | None, known: list
             log.warning("followup_second_look_failed", error=str(exc)[:200])
             return None
 
-    with ThreadPoolExecutor(max_workers=min(8, len(jobs))) as pool:
-        answers = list(pool.map(ask, jobs))
+    if jobs:
+        with ThreadPoolExecutor(max_workers=min(8, len(jobs))) as pool:
+            answers = list(pool.map(ask, jobs))
+    else:
+        answers = []
     # a test the looks add must be read in at least ``second_look_min_views`` DIFFERENT views of the page: one view alone can make a
     # test up (MEASURED on a real page: "PT / APTT" was read as "PT/INR" by the whole-page view alone, 5 of 6 times; no other view
     # ever saw INR). A spelling counts for a view when that view read one within 80% alike (S.Creatin / S. Creatinine).

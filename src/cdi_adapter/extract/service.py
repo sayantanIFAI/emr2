@@ -11,7 +11,7 @@ from ..config import settings
 from ..db import session_scope
 from ..logging import get_logger
 from ..ml.client import MLError, get_client
-from .prompt import block_id_map, build_extraction_prompt, load_schema, max_tokens_for
+from .prompt import block_id_map, build_extraction_prompt, load_schema, max_tokens_for, slim_active
 from . import indian_codes, lab_resolve, medicine_resolve, resolve_llm
 from .medicine_lexicon import medicine_match
 from .test_names import is_known_test, is_test_list, looks_like_medicine, split_tests
@@ -824,6 +824,40 @@ def _read_each_page(client: Any, pages: list[dict[str, Any]], blocks: list[dict[
     return V.merge([g[0] if g else None for g in got]), done[0][1]
 
 
+_PREFETCH: dict[str, Any] = {}
+_prefetch_pool = None
+
+
+def prefetch_main_call(document_id: str) -> bool:
+    """Start the main page call NOW, with the text the printed-text reader already found, so it runs while the handwritten lines are being read
+    (the call takes about 5 s and used to wait for those readings). The answer is kept for ``extract_document``, which uses it only when the page
+    is one page and the document type is the one it was asked for; anything else is thrown away and the normal call is made. No evidence ids are
+    needed from the model (the compact answer has none), so the later block numbers do not matter. Returns True when a call was started."""
+    global _prefetch_pool
+    if not settings.prefetch_main_call or not settings.extract_compact_answer:
+        return False
+    with session_scope() as sess:
+        cls = repo.get_doc_classification(sess, document_id)
+        pages = repo.list_document_pages(sess, document_id)
+        blocks = repo.list_ocr_blocks(sess, document_id)
+    if not cls or len(pages) != 1 or not slim_active(cls["doc_type"]):
+        return False
+    loaded = load_schema(cls["doc_type"])
+    if not loaded:
+        return False
+    _schema_id, schema = loaded
+    doc_type = cls["doc_type"]
+    prompt = build_extraction_prompt(doc_type, blocks)
+    image = _page_image(pages[0])
+    client = get_client()
+    if _prefetch_pool is None:
+        from concurrent.futures import ThreadPoolExecutor
+        _prefetch_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="cdi-prefetch")
+    _PREFETCH[document_id] = (doc_type, _prefetch_pool.submit(
+        client.vlm_json_ex, image, prompt, schema, max_tokens=max_tokens_for(doc_type), retries=settings.extract_retries))
+    return True
+
+
 def extract_document(document_id: str, *, patient_id: str | None = None,
                      encounter_id: str | None = None,
                      abha_hint: str | None = None) -> ExtractResult:
@@ -885,9 +919,19 @@ def extract_document(document_id: str, *, patient_id: str | None = None,
             # latest dated visit's tests and booking are picked (extract/visits.py)
             payload, served_model = _read_each_page(client, pages, blocks, cls["doc_type"], schema)
         else:
-            payload, served_model = client.vlm_json_ex(
-                image, prompt, schema, max_tokens=max_tokens_for(cls["doc_type"]),
-                retries=settings.extract_retries)
+            pre = _PREFETCH.pop(document_id, None)
+            got = None
+            if pre is not None and pre[0] == cls["doc_type"] and len(pages) == 1:
+                try:
+                    got = pre[1].result()                  # started right after classification: usually finished by now
+                except Exception as exc:  # noqa: BLE001 - the normal call below is the fallback
+                    log.warning("prefetch_failed", document_id=document_id, error=str(exc)[:200])
+            if got is not None:
+                payload, served_model = got
+            else:
+                payload, served_model = client.vlm_json_ex(
+                    image, prompt, schema, max_tokens=max_tokens_for(cls["doc_type"]),
+                    retries=settings.extract_retries)
             if slim and isinstance(payload, dict):
                 payload = V.merge([payload])           # older dated entries below a ruled line: the latest one is used
     except MLError as exc:
@@ -898,6 +942,9 @@ def extract_document(document_id: str, *, patient_id: str | None = None,
 
     if isinstance(payload, dict):
         payload = _collapse_repeats(_unescape(payload))
+    if isinstance(payload, dict) and slim and settings.extract_compact_answer:
+        from . import evidence as _evidence
+        _evidence.attach(payload, blocks)                   # the links to the OCR blocks, found here instead of written by the model
     if isinstance(payload, dict) and isinstance(payload.get("patient"), dict):
         from .fields import normalise_age
         fixed_age, sex_hint = normalise_age(payload["patient"].get("age_text"))
