@@ -130,7 +130,7 @@ details>summary{cursor:pointer;color:var(--muted)}
 <header><b>Label the handwriting</b><span id="cnt" class="hint"></span><div class="bar"><i id="bar"></i></div>
 <button class="p" id="dl">Download lines.jsonl</button><button id="dlp">Save progress</button><label class="hint">Load progress <input type="file" id="ld" accept=".json"></label></header>
 <main>
-<p class="hint">Type exactly what is written, letter by letter, as you read it. Do not correct spelling. Tick <b>can't read</b> if you cannot tell, <b>has a name</b> if the crop shows a person's name (it is left out), and <b>bad crop</b> if the line is cut wrongly (part of it missing, or two lines in one). Your work is saved in this browser as you type. When done, press <b>Download lines.jsonl</b> and give me that file.</p>
+<p class="hint">Type exactly what is written, letter by letter, as you read it. Do not correct spelling. Tick <b>can't read</b> if you cannot tell, <b>has a name</b> if the crop shows a person's name (it is left out), and <b>bad crop</b> if the line is cut wrongly (part of it missing, or two lines in one) or is printed, not handwritten. Your work is saved in this browser as you type. When done, press <b>Download lines.jsonl</b> and give me that file.</p>
 __BODY__
 </main>
 <script>
@@ -176,7 +176,7 @@ def build_html(items: list[LineItem], pages: list[str], key: str) -> str:
                 f'<input type="text" id="t-{html.escape(it.id)}" placeholder="what is written here" autocomplete="off" spellcheck="false">'
                 f'<div class="opts"><label><input type="checkbox" id="u-{html.escape(it.id)}"> can\'t read</label>'
                 f'<label><input type="checkbox" id="n-{html.escape(it.id)}"> has a name (leave out)</label>'
-                f'<label><input type="checkbox" id="b-{html.escape(it.id)}"> bad crop (cut wrongly)</label><span class="m">{html.escape(kind)}</span></div>'
+                f'<label><input type="checkbox" id="b-{html.escape(it.id)}"> bad crop (cut wrongly, or printed not handwritten)</label><span class="m">{html.escape(kind)}</span></div>'
                 f'<details><summary>machine reading (optional, hidden so it does not steer you)</summary><span class="m">{html.escape(it.machine or "(none)")}</span></details></div>')
     items_js = json.dumps([{"id": i.id, "crop": i.crop} for i in items], ensure_ascii=False)
     return _PAGE.replace("__BODY__", "\n".join(body)).replace("__ITEMS__", items_js).replace("__KEY__", json.dumps(key))
