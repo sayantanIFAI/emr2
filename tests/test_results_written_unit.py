@@ -83,3 +83,10 @@ def test_anti_hiv_is_the_hiv_written_on_the_page():
     blocks = [{"text": "?HBsAg/Anti-HCV", "bbox": [294, 1099, 521, 1152]}, {"text": "HIV?? non reactive.", "bbox": [341, 1154, 580, 1200]}]
     assert W.page_result_reason("Anti-HIV", blocks).startswith("a result is already written")
     assert W.page_result_reason("HIV", blocks).startswith("a result is already written")
+
+
+def test_a_tick_box_read_as_a_question_mark_before_a_test_name_is_not_a_letter():
+    from cdi_adapter.extract import test_cluster as T
+
+    assert T.placed_text("?Lipid Profile") is not None
+    assert T.placed_text("?CBC") is not None
