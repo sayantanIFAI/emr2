@@ -247,7 +247,7 @@ def texts_agree(known: list[str], blocks: list[dict[str, Any]] | None, colour: A
 
 
 def followup_tests(client: Any, image: bytes, follow_up: str | None, known: list[str],
-                   blocks: list[dict[str, Any]] | None = None, colour: Any = None) -> list[str]:
+                   blocks: list[dict[str, Any]] | None = None, colour: Any = None, corroborated: set[str] | None = None) -> list[str]:
     """Tests the full-page answer missed. Lab tests are the point of the product and the doctor writes them anywhere (beside
     the follow-up line, down the left or right side, at the bottom), so the page is looked at again in several enlarged
     views at once (plus the follow-up line's own region when there is one). Only plain strings with a letter, at most 12,
@@ -305,6 +305,10 @@ def followup_tests(client: Any, image: bytes, follow_up: str | None, known: list
         k = norm(one)
         return len({v for n, v in seen if _same_test(k, n)})
 
+    if corroborated is not None and answered:                        # a test the whole-page answer listed, read again in enough different views
+        for k in known:
+            if support(k) >= need:
+                corroborated.add(norm(k))
     have = {norm(k) for k in known}
     out: list[str] = []
     for one, exempt in items:
@@ -371,6 +375,23 @@ def name_row_box(best: dict[str, Any], blocks: list[dict[str, Any]] | None) -> t
         if not grew:
             break
     return left, top, right, bottom
+
+
+def best_name_block(blocks: list[dict[str, Any]] | None, name: str | None) -> dict[str, Any] | None:
+    """The OCR piece that shares the most words with the name already read (None when none shares one)."""
+    from ..names import name_key
+
+    toks = [t for t in name_key(name).split() if len(t) >= 3]
+    best, score = None, 0
+    for b in blocks or []:
+        if not b.get("bbox"):
+            continue
+        bt = name_key(b.get("text")).split()
+        glued = "".join(bt)                                          # the readers often drop the spaces: "SAYANDAS(40Y/MALE)"
+        s = sum(1 for t in toks if difflib.get_close_matches(t, bt, n=1, cutoff=0.7) or (len(t) >= 4 and t in glued))
+        if s > score:
+            best, score = b, s
+    return best if score >= 1 else None
 
 
 def name_crops(image: bytes, blocks: list[dict[str, Any]] | None, name: str | None) -> list[bytes]:
@@ -482,18 +503,71 @@ def surname_votes(client: Any, crops: list[bytes], options: list[str], shuffles:
     return _choice_votes(client, crops, options, text, shuffles)
 
 
-def name_reads(client: Any, image: bytes, blocks: list[dict[str, Any]] | None, name: str | None) -> list[str]:
-    """The patient's name read again from the name line at several sizes (at the same time). Failed or empty reads are left
-    out. Nothing here decides the name: the caller compares the readings (``names.consensus``) and the front desk confirms it."""
+PLAIN_NAME_PROMPT = "Transcribe exactly the handwriting in this image, letter by letter, on one line."
+_TITLE_WORDS = frozenset("mr mrs ms miss mx smt shri sri kum master dr".split())
+
+
+def name_from_transcription(text: str | None) -> str | None:
+    """The patient's name out of a plain transcription of the name line ("Mr. Sumita. gupta. Gangopadhyay. 7416."): the line's first row, the title
+    dropped, the words kept, everything from the first number on (the age and sex written beside the name) cut off, the full stops after words
+    removed (a single-letter initial keeps its stop). ``None`` when no word is left. MEASURED on a real page: this plain reading gave "Sumita
+    gupta Gangopadhyay" where the JSON "Indian personal name" prompt gave "Sunita Gupta", dropping the surname."""
+    row = next((x.strip() for x in str(text or "").replace("```", "\n").splitlines() if x.strip() and not x.strip().lower().startswith("json")), "")
+    words: list[str] = []
+    for tok in row.split():
+        bare = tok.strip(" ,;:|()[]{}\"'")
+        if not bare:
+            continue
+        if bare[0].isdigit():
+            break                                                    # the age (and sex) written beside the name
+        w = re.sub(r"[^A-Za-z.'\-]", "", bare)
+        if not w or not any(c.isalpha() for c in w):
+            continue
+        if not words and w.rstrip(".").lower() in _TITLE_WORDS:
+            continue                                                 # the title
+        words.append(w if re.fullmatch(r"[A-Za-z]\.", w) else w.rstrip("."))
+    name = " ".join(words)
+    return name[:80] if sum(c.isalpha() for c in name) >= 3 and not re.search(r"(?i)\b(?:null|none|unknown)\b", name) else None
+
+
+def name_reads_split(client: Any, image: bytes, blocks: list[dict[str, Any]] | None, name: str | None) -> tuple[list[str], list[str]]:
+    """``(plain reads, JSON reads)`` of the name line at several sizes. The PLAIN transcription is the reading; the JSON "Indian personal name"
+    prompt is only a cross-check (it snaps to the commonest name and drops words)."""
     from concurrent.futures import ThreadPoolExecutor
 
     if not settings.name_reread:
-        return []
+        return [], []
     try:
         crops = name_crops(image, blocks, name)
     except Exception as exc:  # noqa: BLE001
         log.warning("name_crop_failed", error=str(exc)[:200])
-        return []
+        return [], []
+    if not crops:
+        return [], []
+
+    def plain(png: bytes) -> str | None:
+        try:
+            txt, _ = client.vlm_generate_ex(png, PLAIN_NAME_PROMPT, max_tokens=60)
+        except Exception as exc:  # noqa: BLE001 - an extra look must never cost the document
+            log.warning("name_plain_read_failed", error=str(exc)[:200])
+            return None
+        return name_from_transcription(txt)
+
+    with ThreadPoolExecutor(max_workers=len(crops)) as pool:
+        plain_reads = [g for g in pool.map(plain, crops) if g]
+    return plain_reads, _name_reads_json(client, crops)
+
+
+def name_reads(client: Any, image: bytes, blocks: list[dict[str, Any]] | None, name: str | None) -> list[str]:
+    """The patient's name read again from the name line at several sizes: the plain transcriptions, or the JSON readings when no plain one gave a
+    name. Nothing here decides the name: the caller compares the readings (``names.consensus``) and the front desk confirms it."""
+    plain_reads, json_reads = name_reads_split(client, image, blocks, name)
+    return plain_reads or json_reads
+
+
+def _name_reads_json(client: Any, crops: list[bytes]) -> list[str]:
+    """The JSON "Indian personal name" readings of the crops (a cross-check)."""
+    from concurrent.futures import ThreadPoolExecutor
 
     def ask(png: bytes) -> str | None:
         try:

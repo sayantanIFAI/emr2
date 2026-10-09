@@ -296,6 +296,7 @@ def build_result(inp: ResultInputs) -> dict[str, Any]:
     page_text = " ".join(str(b.get("text") or "") for b in inp.blocks)       # what the page readers saw
     facts_by_id = {str(f.get("id")): f for f in inp.facts}
     second_look = {_norm_name(x) for x in payload.get("_second_look") or [] if isinstance(x, str)}
+    corroborated = {_norm_name(x) for x in payload.get("_corroborated") or [] if isinstance(x, str)}
     text_scan = {_norm_name(k): v for k, v in (payload.get("_text_scan") or {}).items() if isinstance(k, str) and isinstance(v, str)}
     not_lab = {_norm_name(k): v for k, v in (payload.get("_not_lab") or {}).items() if isinstance(k, str) and isinstance(v, str)}
     from ..extract import department as _department
@@ -354,8 +355,15 @@ def build_result(inp: ResultInputs) -> dict[str, Any]:
                 # found by looking again at an ENLARGED part of the page image (handwriting the text reader cannot read): a test
                 # the lab list knows, shown in the list but never accepted
                 t["reason"] = SECOND_LOOK + (f": {t['reason']}" if t.get("reason") else "")
+            elif _norm_name(key) in corroborated:
+                # the whole-page answer named it and a second look at ENLARGED views of the page read it again in enough different views
+                t["reason"] = SECOND_LOOK + (f": {t['reason']}" if t.get("reason") else "")
             else:
-                t["reason"] = UNCONFIRMED + (f": {t['reason']}" if t.get("reason") else "")
+                # no line reader saw it and no second view agrees: only the whole-page answer said so (MEASURED: it adds "INR" to "PT / APTT" by
+                # habit). Not listed as a test; kept in the result with this reason.
+                t["reason"] = UNCONFIRMED + ": no line reader saw it and no second look agrees" + (f" ({t['reason']})" if t.get("reason") else "")
+                if not settings.list_unseen_tests:
+                    t["status"] = "rejected"
         if _norm_name(key) in text_scan and t.get("status") != "rejected":
             t["status"] = "needs_check"
             t["reason"] = text_scan[_norm_name(key)] + ": please check it" + (f" ({t['reason']})" if t.get("reason") else "")

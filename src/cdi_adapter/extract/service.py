@@ -573,8 +573,12 @@ def _check_the_name(client: Any, image: bytes, blocks: list[dict[str, Any]], pay
     first = first if isinstance(first, str) and first.strip() and first.strip().casefold() not in ("null", "none") else None
     if first and org_like(first):                     # the clinic's name on the letterhead was taken for the patient: it is not a name
         first, payload["patient"]["name"] = None, None
-    reads = [r for r in resolve_llm.name_reads(client, image, blocks, first) if not org_like(r)]
-    payload["_name_reads"] = [first, *reads] if first else list(reads)
+    plain_reads, json_reads = resolve_llm.name_reads_split(client, image, blocks, first)
+    # the PLAIN transcriptions are the readings (they decide); the JSON "Indian personal name" readings are only a cross-check and only offered as
+    # other readings of the name (that prompt snaps to the commonest name and drops words: "Sumita Gupta Gangopadhyay" came out "Sunita Gupta")
+    reads = [r for r in (plain_reads or json_reads) if not org_like(r)]
+    cross = [r for r in json_reads if plain_reads and not org_like(r) and not any(alike(r, p, 0.85) for p in plain_reads)]
+    payload["_name_reads"] = ([first, *reads] if first else list(reads)) + cross
     if not reads:
         return
     chosen, agree, total = consensus([first or "", *reads])
@@ -973,6 +977,12 @@ def extract_document(document_id: str, *, patient_id: str | None = None,
         header.fill_patient(payload, page1_blocks)  # a patient printed in the header with age and sex (Apollo Sugar Clinics), when the model found none
     if isinstance(payload, dict) and isinstance(payload.get("patient"), dict) and cls["doc_type"] in ("prescription", "opd_note", "referral"):
         _check_the_name(client, page1_image, page1_blocks, payload, _both_pictures(pages[0], page1_image))     # the name is on the first page
+        if settings.age_sex_reread:
+            from . import age_sex
+            try:
+                age_sex.apply(client, page1_image, page1_blocks, payload)          # "74/F" read from its own crop at three sizes
+            except Exception as exc:  # noqa: BLE001 - an extra: never cost the document
+                log.warning("age_sex_failed", document_id=document_id, error=str(exc)[:160])
 
     if isinstance(payload, dict) and cls["doc_type"] in ("prescription", "opd_note", "referral"):
         from . import header
@@ -1004,7 +1014,9 @@ def extract_document(document_id: str, *, patient_id: str | None = None,
                 names.append(name)
                 listed_entries.append((name, as_read, placed))
         colour = None if not settings.marks_enabled else _colour_page(pages[latest_no - 1] if len(pages) > 1 and 1 <= latest_no <= len(pages) else pages[0], image)     # for the pen marks
-        extra = resolve_llm.followup_tests(client, image, fu_text, names, focus_blocks, colour=colour)    # looks even when no follow-up was found
+        corroborated: set[str] = set()
+        extra = resolve_llm.followup_tests(client, image, fu_text, names, focus_blocks, colour=colour, corroborated=corroborated)    # looks even when no follow-up was found
+        payload["_corroborated"] = sorted(corroborated)           # tests of the main answer that the enlarged second look read again in enough views
         if extra:                          # tests written with the follow-up line, found by the focused second look
             payload.setdefault("investigations", []).extend({"text": t, "evidence": [], "source": "second_look"} for t in extra)
             payload["_second_look"] = list(extra)          # kept so the result can say where these tests came from

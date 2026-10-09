@@ -405,3 +405,34 @@ def test_the_deskew_estimate_matches_the_real_tilt(tilt):
 
 def test_a_page_with_no_text_is_not_rotated():
     assert pages._estimate_skew_deg(np.full((1000, 800), 255, np.uint8)) == 0.0
+
+
+def test_an_undecided_ink_rule_hands_the_decision_to_the_printed_text_vote(monkeypatch):
+    """MEASURED on a real sideways photo: ink-shape ratio 1.2 (neither upright nor sideways), page not judged a photo: the printed-text vote was never
+    asked and the page was read sideways. Now the vote decides whenever the ink rule is not decisive."""
+    from cdi_adapter.ingest import orient_ocr, pages
+
+    asked = []
+
+    def vote(arr, host=None, candidates=(0, 1, 2, 3)):
+        asked.append(candidates)
+        return 1, {"scores": {"0": 148.2, "1": 278.2, "2": 23.0, "3": 23.0}, "best": 1, "decided": True}
+
+    monkeypatch.setattr(settings, "orient_enabled", True)
+    monkeypatch.setattr(settings, "orient_ocr_check", True)
+    monkeypatch.setattr(pages, "_orientation_ratio", lambda gray: 1.2)
+    monkeypatch.setattr(orient_ocr, "vote", vote)
+    out, meta = _norm(_page())
+    assert asked and "rotate90" in meta["steps"]
+
+
+def test_a_decisively_upright_page_does_not_ask_the_vote(monkeypatch):
+    from cdi_adapter.ingest import orient_ocr, pages
+
+    asked = []
+    monkeypatch.setattr(settings, "orient_enabled", True)
+    monkeypatch.setattr(settings, "orient_ocr_check", True)
+    monkeypatch.setattr(pages, "_orientation_ratio", lambda gray: 0.15)
+    monkeypatch.setattr(orient_ocr, "vote", lambda *a, **k: asked.append(1) or (None, {}))
+    _out, meta = _norm(_page())
+    assert not asked and "rotate90" not in meta["steps"]

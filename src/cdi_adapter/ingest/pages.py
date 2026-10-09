@@ -206,7 +206,13 @@ def _straighten(arr: np.ndarray, meta: dict[str, Any]) -> tuple[np.ndarray, dict
     from . import orient_ocr
 
     voted: tuple[int | None, dict[str, Any]] | None = None
-    if settings.orient_enabled and settings.orient_ocr_check and is_photo:
+    # The ink-shape rule is only trusted when it is decisive (upright pages score below 0.5, sideways ones above ``quality_sideways_ratio``). In
+    # between, and for a page not judged a photo, the PRINTED text decides. MEASURED on a real sideways photo that was not judged a photo: the ink
+    # rule said 1.2 (undecided), the printed-text vote was never asked, the page was read sideways and every word came out as garbage; asked, the
+    # vote said "turn once" (print read 278 against 148 / 23 / 23).
+    ratio0 = _orientation_ratio(gray)
+    ambiguous = ratio0 is None or 0.5 <= ratio0 <= settings.quality_sideways_ratio
+    if settings.orient_enabled and settings.orient_ocr_check and (is_photo or ambiguous):
         voted = orient_ocr.vote(arr)
         meta["orientation_vote"] = voted[1]
     if voted is not None and voted[0] is not None:
