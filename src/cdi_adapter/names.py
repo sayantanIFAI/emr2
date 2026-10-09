@@ -13,6 +13,30 @@ def name_key(name: str | None) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[^a-z ]", "", n.casefold())).strip()
 
 
+_NOT_NAME_WORDS = frozenset("yrs yr yrs. yr. years year yo y/o age aged sex gender male female m/f f/m".split())
+_GLUED_TITLE = re.compile(r"^(mr|mrs|ms|miss|smt|shri|sri|dr)\.(?=[A-Za-z])", re.I)
+
+
+def clean_name(name: str | None) -> str | None:
+    """A patient's name is words only. Everything from the first number, or the first age or sex word ("74 yrs Female", "yrs Female", "M/F"),
+    is the age and sex written beside the name, never part of it; stray digits inside a word are dropped; a title glued to the first word
+    ("Mrs.Sumita") gets its space. ``None`` when no letters are left."""
+    text = _GLUED_TITLE.sub(lambda m: m.group(0) + " ", str(name or "").strip())
+    words: list[str] = []
+    for tok in text.split():
+        bare = tok.strip(" ,;:|()[]{}\"'")
+        low = bare.lower()
+        if not bare:
+            continue
+        if bare[0].isdigit() or low in _NOT_NAME_WORDS or re.fullmatch(r"[mf]\s*/\s*[mf]", low):
+            break
+        tok = re.sub(r"\d+", "", tok)
+        if any(c.isalpha() for c in tok):
+            words.append(tok)
+    out = " ".join(words).strip(" ,;:|-")
+    return out if sum(c.isalpha() for c in out) >= 2 else None
+
+
 _ORG_WORDS = re.compile(r"\b(?:limited|ltd|pvt|private|hospital|hospitals|clinic|clinics|centre|center|health|healthcare|lifestyle|"
                         r"diagnostic|diagnostics|pharmacy|medical|laboratory|laboratories|nursing|polyclinic|institute|foundation|"
                         r"trust|corporation|enterprises|company)\b", re.I)

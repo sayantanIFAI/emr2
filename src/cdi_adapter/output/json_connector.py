@@ -217,6 +217,9 @@ def _patient_name(doc: dict[str, Any], c: dict[str, Any]) -> dict[str, Any]:
     if doc.get("name_confirmed_at") and (doc.get("patient_name") or "").strip():
         return value(doc["patient_name"], "checked", f"confirmed by {doc.get('name_confirmed_by') or 'the front desk'}")
     v = _v(c)
+    if isinstance(v.get("value"), str):
+        from ..names import clean_name
+        v["value"] = clean_name(v["value"])                  # a name never carries the age, the sex or a digit
     if v["value"] not in (None, ""):
         v["status"] = "needs_check"
         v["reason"] = NAME_TO_CONFIRM + (f" ({v['reason']})" if v.get("reason") else "")
@@ -243,9 +246,12 @@ def _confirmed_names_for(doc: dict[str, Any], shown: str | None) -> list[str]:
 def _intake(doc: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     """What the front desk typed (token, mobile), the name as shown, as read, whether a person confirmed it, and the other
     readings of the name (so the screen can offer them)."""
+    from ..names import clean_name, name_key, org_like
+
     shown = (doc.get("patient_name") or "").strip() or None
+    if shown and not doc.get("name_confirmed_at"):
+        shown = clean_name(shown)
     cands: list[str] = []
-    from ..names import name_key, org_like
 
     seen = {name_key(shown)}                       # "MR. Debabrata Sanwar" and "Debabrata Sanwar" are one offer
     for n in _confirmed_names_for(doc, shown):      # a name a person already confirmed for this mobile number, close to the one read: offered FIRST

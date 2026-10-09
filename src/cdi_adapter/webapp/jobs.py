@@ -413,8 +413,9 @@ def _stage2(job: "Job", prog: DocProg,
                            "birth_date": i.get("birth_date"), "age_years": i.get("age_years"),
                            "abha_number": job.abha, "provisional": True}
         prog.stage("extract", "done")
-        if ex.identity and (ex.identity.get("name") or "").strip():
-            prog.patient_name = str(ex.identity["name"]).strip()[:120]      # the screen groups by name + mobile number
+        from ..names import clean_name
+        if ex.identity and clean_name(ex.identity.get("name")):
+            prog.patient_name = clean_name(ex.identity["name"])[:120]       # the screen groups by name + mobile number; never with the age or sex in it
             try:
                 with session_scope() as s:
                     # what was READ is always kept; the shown name changes only while nobody has confirmed one

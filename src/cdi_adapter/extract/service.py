@@ -572,9 +572,15 @@ def _check_the_name(client: Any, image: bytes, blocks: list[dict[str, Any]], pay
 
     first = payload["patient"].get("name")
     first = first if isinstance(first, str) and first.strip() and first.strip().casefold() not in ("null", "none") else None
+    from ..names import clean_name
+
+    first = clean_name(first)                         # "Mrs.Sumita Gupta Gangopadhyay yrs Female": the age and sex are not part of the name
+    payload["patient"]["name"] = first
     if first and org_like(first):                     # the clinic's name on the letterhead was taken for the patient: it is not a name
         first, payload["patient"]["name"] = None, None
     plain_reads, json_reads = resolve_llm.name_reads_split(client, image, blocks, first)
+    plain_reads = [r for r in (clean_name(x) for x in plain_reads) if r]
+    json_reads = [r for r in (clean_name(x) for x in json_reads) if r]
     # the PLAIN transcriptions are the readings (they decide); the JSON "Indian personal name" readings are only a cross-check and only offered as
     # other readings of the name (that prompt snaps to the commonest name and drops words: "Sumita Gupta Gangopadhyay" came out "Sunita Gupta")
     reads = [r for r in (plain_reads or json_reads) if not org_like(r)]
@@ -617,6 +623,8 @@ def _check_the_name(client: Any, image: bytes, blocks: list[dict[str, Any]], pay
     if first and isinstance(shown, str) and len(first.split()) >= 2 and len(shown.split()) == 1:
         payload["patient"]["name"] = first                  # the re-reads of a small crop gave one word where the page gave a full name
         payload["_name_note"] = f"the re-reads gave only '{shown}'; the first reading '{first}' is kept"
+    payload["patient"]["name"] = clean_name(payload["patient"].get("name"))
+    payload["_name_reads"] = [c for c in (clean_name(x) for x in payload.get("_name_reads") or []) if c]
     _suggest_joined_name(payload)
     if settings.name_choice_votes:
         _suggest_first_names(client, images or [image], blocks, payload)

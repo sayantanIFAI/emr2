@@ -508,6 +508,7 @@ def surname_votes(client: Any, crops: list[bytes], options: list[str], shuffles:
 PLAIN_SCALES = (1.0, 1.3, 1.6, 2.0, 2.4, 3.0)      # six sizes of the name line: one reading alone varies with the size (MEASURED: Sumita / Amita / Swita from the same line)
 PLAIN_NAME_PROMPT = "Transcribe exactly the handwriting in this image, letter by letter, on one line."
 _TITLE_WORDS = frozenset("mr mrs ms miss mx smt shri sri kum master dr".split())
+from ..names import _NOT_NAME_WORDS  # noqa: E402  - the words that are the age or sex written beside a name
 
 
 def name_from_transcription(text: str | None) -> str | None:
@@ -521,7 +522,7 @@ def name_from_transcription(text: str | None) -> str | None:
         bare = tok.strip(" ,;:|()[]{}\"'")
         if not bare:
             continue
-        if bare[0].isdigit():
+        if bare[0].isdigit() or bare.lower() in _NOT_NAME_WORDS:
             break                                                    # the age (and sex) written beside the name
         w = re.sub(r"[^A-Za-z.'\-]", "", bare)
         if not w or not any(c.isalpha() for c in w):
