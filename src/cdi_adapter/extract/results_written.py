@@ -164,6 +164,12 @@ def page_result_reason(key: str, blocks: list[dict[str, Any]] | None) -> str | N
     k = re.sub(r"\s+", " ", (key or "").strip())
     if len(re.sub(r"[^A-Za-z0-9]", "", k)) < 2 or not blocks:
         return None
+    reason = _page_result_reason(k, blocks)
+    core = re.sub(r"(?i)^(?:anti|serum|s|total)[\s.\-]+(?=[A-Za-z0-9])", "", k)      # "Anti-HIV" is written "HIV" on the page
+    return reason or (_page_result_reason(core, blocks) if core != k and len(core) >= 3 else None)
+
+
+def _page_result_reason(k: str, blocks: list[dict[str, Any]]) -> str | None:
     body = re.escape(k).replace(r"\ ", r"[\s.\-]*")
     strict = re.compile(r"(?<![A-Za-z0-9])" + body + r"(?![A-Za-z])", re.I)
     loose = re.compile(body + r"(?![A-Za-z])", re.I) if len(k) >= 3 else strict
