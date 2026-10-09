@@ -154,8 +154,9 @@ def patient_in_header(blocks: list[dict[str, Any]]) -> dict[str, str] | None:
 
 
 def fill_patient(payload: dict[str, Any], blocks: list[dict[str, Any]]) -> list[str]:
-    """Fill the patient's empty name, age, sex and phone from the header (``patient_in_header``). A value the model gave is never
-    replaced; "null" written as text counts as empty. Returns what was filled."""
+    """Fill the patient's empty name, age and sex from the header (``patient_in_header``). A value the model gave is never replaced;
+    "null" written as text counts as empty. Returns what was filled. The PHONE is never taken from the page: the patient's mobile number is the
+    one typed at upload (MEASURED: a letterhead's WhatsApp number was shown as the patient's phone)."""
     found = patient_in_header(blocks)
     if not found:
         return []
@@ -164,7 +165,7 @@ def fill_patient(payload: dict[str, Any], blocks: list[dict[str, Any]]) -> list[
         return []
     pat = dict(pat or {})
     filled = []
-    for key in ("name", "age_text", "sex", "phone"):
+    for key in ("name", "age_text", "sex"):
         if key in found and _empty(pat.get(key)):
             pat[key] = found[key]
             filled.append(key)

@@ -946,6 +946,9 @@ def extract_document(document_id: str, *, patient_id: str | None = None,
         from . import evidence as _evidence
         _evidence.attach(payload, blocks)                   # the links to the OCR blocks, found here instead of written by the model
     if isinstance(payload, dict) and isinstance(payload.get("patient"), dict):
+        # the patient's mobile number is what was typed at upload, never what the page prints (a letterhead's WhatsApp / clinic number)
+        payload["patient"]["phone"] = (doc.get("phone") or "").strip() or None
+    if isinstance(payload, dict) and isinstance(payload.get("patient"), dict):
         from .fields import normalise_age
         fixed_age, sex_hint = normalise_age(payload["patient"].get("age_text"))
         if fixed_age != payload["patient"].get("age_text"):

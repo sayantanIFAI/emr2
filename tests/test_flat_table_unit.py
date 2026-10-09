@@ -47,3 +47,14 @@ def test_a_value_wrapped_in_a_status_object_is_unwrapped_for_a_boolean_column():
     r["doctor"]["signature_present"] = {"value": True, "status": "checked"}
     row = F.flatten(r)[0]
     assert row["doctor_stamp_present"] is None and row["doctor_signature_present"] is True
+
+
+def test_the_patient_phone_is_the_number_typed_at_upload_never_one_read_from_the_page():
+    from cdi_adapter.output import json_connector as jc
+
+    base = {"id": "d", "status": "validated", "original_filename": "x.jpg"}
+    page_phone = {"patient": {"phone": "9354465808"}}                       # a letterhead's WhatsApp number the model read as the patient's
+    typed = jc.build_result(jc.ResultInputs(document={**base, "phone": "9830012345"}, facts=[], blocks=[], pages=[], payload=page_phone))["patient"]["phone"]
+    assert typed["value"] == "9830012345" and typed["status"] == "checked"
+    none_typed = jc.build_result(jc.ResultInputs(document=base, facts=[], blocks=[], pages=[], payload=page_phone))["patient"]["phone"]
+    assert none_typed["value"] is None and none_typed["status"] == "absent"

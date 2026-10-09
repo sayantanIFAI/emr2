@@ -70,7 +70,7 @@ def test_patient_and_doctor_details_are_checked_against_the_page():
     r = jc.build_result(_inputs(payload=PAYLOAD))
     # a handwritten name is never final on its own: it is "to confirm" until a person confirms it
     assert r["patient"]["name"] == {"value": "Anil Mehra", "status": "needs_check", "reason": jc.NAME_TO_CONFIRM, "confidence": None}
-    assert r["patient"]["phone"]["status"] == "checked"
+    assert r["patient"]["phone"]["status"] == "absent"                 # the patient's phone is the number typed at upload, never one read from the page
     assert r["patient"]["address"] == {"value": None, "status": "absent", "reason": None, "confidence": None}
     assert r["doctor"]["reg_no"]["status"] == "checked" and r["doctor"]["qualification"]["value"] == "MD"
     assert r["doctor"]["clinic"]["name"]["status"] == "checked"

@@ -429,7 +429,9 @@ def build_result(inp: ResultInputs) -> dict[str, Any]:
         "extraction_incomplete": bool(payload.get("_partial")),
         "flags": [*checks["flags"], *unread_flags],
         "patient": {**{k: _v(p[k]) for k in ("name", "age_text", "dob", "sex", "mrn", "phone", "address", "abha_id")},
-                    "name": name_v},
+                    "name": name_v,
+                    # the mobile number typed at upload; never a number read from the page
+                    "phone": (value(str(doc["phone"]).strip(), "checked", "typed at upload") if (doc.get("phone") or "").strip() else F.absent())},
         "doctor": {**{k: _v(d[k]) for k in ("name", "reg_no", "department", "designation", "qualification")},
                    "clinic": {k: _v(d["clinic"][k]) for k in ("name", "address", "phone")},
                    "stamp_present": _v(d["stamp_present"]), "signature_present": _v(d["signature_present"])},

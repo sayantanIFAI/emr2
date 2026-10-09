@@ -92,8 +92,8 @@ def test_a_doctor_an_organisation_or_a_line_without_age_and_sex_is_not_the_patie
 
 def test_the_header_patient_fills_only_what_is_empty_and_text_null_counts_as_empty():
     payload = {"patient": {"name": "null", "sex": "F", "phone": "None"}}
-    assert H.fill_patient(payload, APOLLO) == ["name", "age_text", "phone"]
-    assert payload["patient"] == {"name": "Sayandas", "sex": "F", "phone": "8697709557", "age_text": "40 Y"}      # the sex the model gave stays
+    assert H.fill_patient(payload, APOLLO) == ["name", "age_text"]
+    assert payload["patient"] == {"name": "Sayandas", "sex": "F", "phone": "None", "age_text": "40 Y"}      # the sex the model gave stays; the phone is never taken from the page
     kept = {"patient": {"name": "Sayan Das", "age_text": "40", "sex": "M", "phone": "1"}}
     assert H.fill_patient(kept, APOLLO) == [] and kept["patient"]["name"] == "Sayan Das"
     assert H.fill_patient({"patient": "text"}, APOLLO) == [] and H.fill_patient({}, []) == []
