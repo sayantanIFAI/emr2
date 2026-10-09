@@ -67,3 +67,13 @@ def test_a_group_result_in_the_same_line_and_a_list_without_a_result():
     plain = [{"text": "HbA1c/FBS/PPBS/TSH"}, {"text": "Normal diet and walk"}]
     assert W.page_result_reason("FBS", plain) is None and W.page_result_reason("TSH", plain) is None
     assert W.page_result_reason("HbA1c", plain) is None
+
+
+def test_the_piece_written_below_is_found_by_its_place_not_by_its_order():
+    # MEASURED: the OCR order put "metatinine-0.?3" and "64PT-17" between "?HBsAg/Anti-HCV" and the wrapped "HIV?? non reactive."
+    blocks = [{"text": "?HBsAg/Anti-HCV", "bbox": [294, 1099, 521, 1152]}, {"text": "metatinine-0.?3", "bbox": [75, 1114, 259, 1144]},
+              {"text": "64PT-17", "bbox": [80, 1151, 180, 1186]}, {"text": "HIV?? non reactive.", "bbox": [341, 1154, 580, 1200]},
+              {"text": "CBC Creatinine ?APT/SGOT CRP", "bbox": [660, 1178, 896, 1322]}]
+    assert W.page_result_reason("HBsAg", blocks).startswith("a result is already written")
+    assert W.page_result_reason("Anti-HCV", blocks).startswith("a result is already written")
+    assert W.page_result_reason("CRP", blocks) is None

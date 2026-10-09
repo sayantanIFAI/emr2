@@ -26,3 +26,10 @@ def test_nothing_left_is_no_name():
 
 def test_a_transcription_stops_at_the_age_or_sex_words():
     assert resolve_llm.name_from_transcription("Mrs. Sumita Gupta Gangopadhyay yrs Female") == "Sumita Gupta Gangopadhyay"
+
+
+def test_a_glued_age_and_sex_after_the_surname_are_cut_off():
+    # MEASURED on a real page: the line reads "Mrs.Sumita Gupta Gangopadhyay./72yrs/Female"
+    assert resolve_llm.name_from_transcription("Mrs.Sumita Gupta Gangopadhyay./72yrs/Female") == "Sumita Gupta Gangopadhyay"
+    assert clean_name("Sumita Gupta Gangopadhyay Yrsfemale") == "Sumita Gupta Gangopadhyay"
+    assert clean_name("Mrs.Sumita Gupta Gangopadhyay./72yrs/Female") == "Mrs. Sumita Gupta Gangopadhyay."

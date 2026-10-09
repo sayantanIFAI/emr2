@@ -133,6 +133,30 @@ def _group_value(after: str, next_piece: str = "") -> bool:
     return False
 
 
+def _following(blocks: list[dict[str, Any]], i: int) -> str:
+    """The text written right after block ``i`` on the page: the nearest block to its right on the same row, or just below it (a wrapped line).
+    The OCR order puts unrelated blocks between the two, so the next block in the list is not used when the boxes are known."""
+    b = blocks[i]
+    box = b.get("bbox")
+    if not (isinstance(box, (list, tuple)) and len(box) >= 4):
+        return str(blocks[i + 1].get("text") or "") if i + 1 < len(blocks) else ""
+    x0, y0, x1, y1 = (float(v) for v in box[:4])
+    h = max(1.0, y1 - y0)
+    best, best_d = "", 1e9
+    for j, o in enumerate(blocks):
+        ob = o.get("bbox")
+        if j == i or not (isinstance(ob, (list, tuple)) and len(ob) >= 4):
+            continue
+        ox0, oy0, ox1, oy1 = (float(v) for v in ob[:4])
+        same_row = min(y1, oy1) - max(y0, oy0) > 0.4 * min(h, oy1 - oy0) and -15 <= ox0 - x1 <= 3 * h
+        below = -0.2 * h <= oy0 - y1 <= 0.6 * h and min(x1, ox1) - max(x0, ox0) > 0.3 * min(x1 - x0, ox1 - ox0)
+        if same_row or below:
+            d = abs(ox0 - x1) if same_row else (oy0 - y1) + 1
+            if d < best_d:
+                best, best_d = str(o.get("text") or ""), d
+    return best
+
+
 def page_result_reason(key: str, blocks: list[dict[str, Any]] | None) -> str | None:
     """The reason when EVERY occurrence of the name on the page has a value after it (a result already written), else None. A name that is written
     once without a value (the doctor's ordered list) is a test whatever else the page says, also when a reader glued it to its neighbour
@@ -149,7 +173,7 @@ def page_result_reason(key: str, blocks: list[dict[str, Any]] | None) -> str | N
         for m in loose.finditer(text):
             seen += 1
             is_strict = bool(strict.match(text, m.start()))
-            nxt = str(blocks[i + 1].get("text") or "") if i + 1 < len(blocks) and not _ITEM.sub("", text[m.end():]).strip(" .?") else ""
+            nxt = _following(blocks, i) if not _ITEM.sub("", text[m.end():]).strip(" .?") else ""
             if is_strict and (_after_has_value(text[m.end():], nxt if not text[m.end():].strip() else "") or _group_value(text[m.end():], nxt)):
                 valued += 1
                 example = example or (text[m.start():min(len(text), m.end() + 14)].strip() + (" " + nxt[:18].strip() if nxt and len(text) - m.start() < 20 else ""))

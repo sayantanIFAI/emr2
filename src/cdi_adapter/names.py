@@ -13,8 +13,9 @@ def name_key(name: str | None) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[^a-z ]", "", n.casefold())).strip()
 
 
-_NOT_NAME_WORDS = frozenset("yrs yr yrs. yr. years year yo y/o age aged sex gender male female m/f f/m".split())
+_NOT_NAME_WORDS = frozenset("yrs yr yrs. yr. years year yo y/o age aged sex gender male female m/f f/m yrsfemale yrsmale".split())
 _GLUED_TITLE = re.compile(r"^(mr|mrs|ms|miss|smt|shri|sri|dr)\.(?=[A-Za-z])", re.I)
+SEPARATORS = re.compile(r"[\s/,;|]+")             # "Gangopadhyay./72yrs/Female" is three words: the name, the age, the sex
 
 
 def clean_name(name: str | None) -> str | None:
@@ -23,12 +24,13 @@ def clean_name(name: str | None) -> str | None:
     ("Mrs.Sumita") gets its space. ``None`` when no letters are left."""
     text = _GLUED_TITLE.sub(lambda m: m.group(0) + " ", str(name or "").strip())
     words: list[str] = []
-    for tok in text.split():
+    toks = SEPARATORS.split(text)
+    for k, tok in enumerate(toks):
         bare = tok.strip(" ,;:|()[]{}\"'")
         low = bare.lower()
         if not bare:
             continue
-        if bare[0].isdigit() or low in _NOT_NAME_WORDS or re.fullmatch(r"[mf]\s*/\s*[mf]", low):
+        if bare[0].isdigit() or low in _NOT_NAME_WORDS or (low in ("m", "f") and k + 1 < len(toks) and toks[k + 1].lower() in ("f", "m")):
             break
         tok = re.sub(r"\d+", "", tok)
         if any(c.isalpha() for c in tok):

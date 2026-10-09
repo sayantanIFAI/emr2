@@ -516,9 +516,12 @@ def name_from_transcription(text: str | None) -> str | None:
     dropped, the words kept, everything from the first number on (the age and sex written beside the name) cut off, the full stops after words
     removed (a single-letter initial keeps its stop). ``None`` when no word is left. MEASURED on a real page: this plain reading gave "Sumita
     gupta Gangopadhyay" where the JSON "Indian personal name" prompt gave "Sunita Gupta", dropping the surname."""
+    from ..names import _GLUED_TITLE, SEPARATORS
+
     row = next((x.strip() for x in str(text or "").replace("```", "\n").splitlines() if x.strip() and not x.strip().lower().startswith("json")), "")
+    row = _GLUED_TITLE.sub(lambda m: m.group(0) + " ", row)
     words: list[str] = []
-    for tok in row.split():
+    for tok in SEPARATORS.split(row):
         bare = tok.strip(" ,;:|()[]{}\"'")
         if not bare:
             continue
