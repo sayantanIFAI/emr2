@@ -596,6 +596,16 @@ def _check_the_name(client: Any, image: bytes, blocks: list[dict[str, Any]], pay
     modal = Counter(name_key(r) for r in reads if name_key(r)).most_common(1)
     if modal and modal[0][1] >= 2 and modal[0][1] * 2 > len(reads) and modal[0][0] != name_key(payload["patient"].get("name") or ""):
         payload["patient"]["name"] = next(r for r in reads if name_key(r) == modal[0][0])
+    # the PLAIN transcriptions of the name line decide over the whole-page answer: when at least two of them agree with each other (85 % alike) and
+    # the shown name is not alike them, their agreed reading is the shown name. MEASURED on a real page: the whole-page answer said "Mr. Amit Gupta
+    # Gangadhay" while the plain readings of the name line said "Sumita Gupta Gangopadhyay" (twice).
+    plain_ok = [r for r in plain_reads if not org_like(r)]
+    if len(plain_ok) >= 2:
+        agreed, how_many, _total = consensus(plain_ok)
+        shown_now = payload["patient"].get("name")
+        if agreed and how_many >= 2 and not alike(shown_now, agreed, 0.85):
+            payload["patient"]["name"] = agreed
+            payload["_name_note"] = f"the name line was read the same way {how_many} times as '{agreed}'; the whole-page answer said '{shown_now}'"
     from ..names import prefer_complete
 
     now = payload["patient"].get("name")

@@ -239,3 +239,21 @@ def test_null_written_as_text_is_never_a_name_reading_and_a_glued_header_line_st
     blocks = [{"id": "g", "text": "SAYANDAS(40Y/MALE)", "bbox": [120, 300, 800, 360], "page_id": "p1"}]
     got = R.name_crops(_png(), blocks, "Sayandas")
     assert len(got) == 3 and cv2.imdecode(np.frombuffer(got[0], np.uint8), cv2.IMREAD_COLOR).shape[0] < 400          # the line, not the top third of the page
+
+
+class PlainAndJson:
+    """A model that transcribes the line plainly (right) but, asked for 'an Indian personal name' as JSON, snaps to the commonest name and drops a word."""
+    def vlm_generate_ex(self, image, prompt, **kw):
+        return "Mr. Sumita. gupta. Gangopadhyay. 7416.", "m"
+
+    def vlm_json_ex(self, image, prompt, schema, **kw):
+        return {"name": "Sunita Gupta"}, "m"
+
+
+def test_the_plain_transcription_decides_and_the_json_reading_is_only_a_cross_check():
+    blocks = [{"id": "b1", "text": "Gango?adhyay.", "bbox": [451, 257, 682, 321], "page_id": "p1"},
+              {"id": "b2", "text": "q?u?ta.", "bbox": [291, 252, 389, 293], "page_id": "p1"}]
+    payload = {"patient": {"name": "Mr. Amit Gupta Gangadhay"}}
+    X._check_the_name(PlainAndJson(), _png(1039, 1598), blocks, payload)
+    assert payload["patient"]["name"] == "Sumita gupta Gangopadhyay"                    # the plain readings agreed, the whole-page answer did not
+    assert "Sunita Gupta" in payload["_name_reads"]                                     # the JSON reading is still offered as another reading
