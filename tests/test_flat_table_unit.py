@@ -39,3 +39,11 @@ def test_the_ddl_names_every_column_once_and_the_search_columns_exist():
     assert len(F.COLUMN_NAMES) == len(set(F.COLUMN_NAMES))
     assert "CREATE TABLE IF NOT EXISTS prescription_flat" in F.DDL and "prescription_flat_token_phone" in F.DDL
     assert set(F.SCREEN_COLUMNS) <= set(F.COLUMN_NAMES)
+
+
+def test_a_value_wrapped_in_a_status_object_is_unwrapped_for_a_boolean_column():
+    r = result([])
+    r["doctor"]["stamp_present"] = {"value": None, "status": "absent"}
+    r["doctor"]["signature_present"] = {"value": True, "status": "checked"}
+    row = F.flatten(r)[0]
+    assert row["doctor_stamp_present"] is None and row["doctor_signature_present"] is True

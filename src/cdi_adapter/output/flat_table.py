@@ -87,6 +87,11 @@ def _st(x: Any) -> str | None:
     return x.get("status") if isinstance(x, dict) else None
 
 
+def _bool(x: Any) -> bool | None:
+    x = _v(x)
+    return x if isinstance(x, bool) else None
+
+
 def _num(x: Any) -> float | None:
     try:
         return None if x is None or x == "" else float(x)
@@ -161,7 +166,7 @@ def flatten(result: dict[str, Any]) -> list[dict[str, Any]]:
         "doctor_qualification": _v(d.get("qualification")), "doctor_qualification_status": _st(d.get("qualification")),
         "doctor_reg_no": _v(d.get("reg_no")), "doctor_reg_no_status": _st(d.get("reg_no")),
         "doctor_clinic_name": _v(clinic.get("name")), "doctor_clinic_address": _v(clinic.get("address")), "doctor_clinic_phone": _v(clinic.get("phone")),
-        "doctor_stamp_present": d.get("stamp_present"), "doctor_signature_present": d.get("signature_present"),
+        "doctor_stamp_present": _bool(d.get("stamp_present")), "doctor_signature_present": _bool(d.get("signature_present")),
         **_booking(result.get("follow_up"), d.get("name")),
         "lab_preparation": result.get("lab_preparation"), "visits": visits, "latest_visit_date": next((v.get("date") for v in visits if v.get("is_latest")), None),
         "advice": result.get("advice"), "diagnoses": result.get("diagnoses"), "medications": result.get("medications"), "vitals": result.get("vitals"),
