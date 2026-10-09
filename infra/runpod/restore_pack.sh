@@ -2,7 +2,7 @@
 # Put a backup pack (backup_pack.sh) back onto a pod whose /workspace was lost, and start everything.
 #
 #   scp -P <port> cdi-state.tar.gz root@<ip>:/workspace/offpod/      # from your computer
-#   bash <(curl -fsSL https://raw.githubusercontent.com/sayantanIFAI/emr/main/infra/runpod/restore_pack.sh) /workspace/offpod/cdi-state.tar.gz
+#   bash <(curl -fsSL https://raw.githubusercontent.com/sayantanIFAI/emr2/main/infra/runpod/restore_pack.sh) /workspace/offpod/cdi-state.tar.gz
 #
 # Order matters: the pack is unpacked FIRST (the passwords are kept, and the database dump is there when
 # the fresh Postgres is built), then the normal deploy clones the code, downloads the models and starts.
@@ -27,4 +27,4 @@ if [ -d "$WS/cdi/.git" ]; then
   git -C "$WS/cdi" fetch -q origin && git -C "$WS/cdi" reset -q --hard origin/main
   exec bash "$WS/cdi/infra/runpod/deploy_fresh_pod.sh"
 fi
-curl -fsSL https://raw.githubusercontent.com/sayantanIFAI/emr/main/infra/runpod/deploy_fresh_pod.sh | bash
+curl -fsSL https://raw.githubusercontent.com/sayantanIFAI/emr2/main/infra/runpod/deploy_fresh_pod.sh | bash

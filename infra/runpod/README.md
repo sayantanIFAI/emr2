@@ -98,7 +98,7 @@ and the stored scans come back; the code and the models are downloaded again):
 
 ```bash
 scp -P <port> cdi-state.tar.gz* root@<ip>:/workspace/offpod/
-bash <(curl -fsSL https://raw.githubusercontent.com/sayantanIFAI/emr/main/infra/runpod/restore_pack.sh) /workspace/offpod/cdi-state.tar.gz
+bash <(curl -fsSL https://raw.githubusercontent.com/sayantanIFAI/emr2/main/infra/runpod/restore_pack.sh) /workspace/offpod/cdi-state.tar.gz
 ```
 
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Fresh pod -> running admin upload service, from git. Safe to re-run.
 #
-#   curl -fsSL https://raw.githubusercontent.com/sayantanIFAI/emr/main/infra/runpod/deploy_fresh_pod.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/sayantanIFAI/emr2/main/infra/runpod/deploy_fresh_pod.sh | bash
 #   (or: bash /workspace/cdi/infra/runpod/deploy_fresh_pod.sh)
 #
 # What it does: clone/update the repo -> .env from .env.runpod + a generated admin password (kept in
@@ -11,7 +11,7 @@
 set -uo pipefail
 WS=/workspace
 REPO=$WS/cdi
-URL="${CDI_REPO_URL:-https://github.com/sayantanIFAI/emr.git}"
+URL="${CDI_REPO_URL:-https://github.com/sayantanIFAI/emr2.git}"
 mkdir -p "$WS/logs" "$WS/secrets" "$WS/hf-cache"
 chmod 700 "$WS/secrets"
 export DEBIAN_FRONTEND=noninteractive HF_HOME="$WS/hf-cache" PIP_BREAK_SYSTEM_PACKAGES=1 PIP_ROOT_USER_ACTION=ignore
