@@ -147,7 +147,7 @@ def page_result_reason(key: str, blocks: list[dict[str, Any]] | None) -> str | N
             seen += 1
             is_strict = bool(strict.match(text, m.start()))
             nxt = str(blocks[i + 1].get("text") or "") if i + 1 < len(blocks) and not _ITEM.sub("", text[m.end():]).strip(" .?") else ""
-            if is_strict and (_after_has_value(text[m.end():], nxt) or _group_value(text[m.end():], nxt)):
+            if is_strict and (_after_has_value(text[m.end():], nxt if not text[m.end():].strip() else "") or _group_value(text[m.end():], nxt)):
                 valued += 1
                 example = example or (text[m.start():min(len(text), m.end() + 14)].strip() + (" " + nxt[:18].strip() if nxt and len(text) - m.start() < 20 else ""))
     if seen and valued == seen:
