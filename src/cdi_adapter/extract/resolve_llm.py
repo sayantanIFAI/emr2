@@ -394,7 +394,7 @@ def best_name_block(blocks: list[dict[str, Any]] | None, name: str | None) -> di
     return best if score >= 1 else None
 
 
-def name_crops(image: bytes, blocks: list[dict[str, Any]] | None, name: str | None) -> list[bytes]:
+def name_crops(image: bytes, blocks: list[dict[str, Any]] | None, name: str | None, scales: tuple[float, ...] | None = None) -> list[bytes]:
     """The page line the patient's name is on, cut out and enlarged to each of ``NAME_SCALES`` (the name line is found as the
     OCR block that shares the most words with the name already read; with none, the top third of the page)."""
     import cv2
@@ -424,7 +424,7 @@ def name_crops(image: bytes, blocks: list[dict[str, Any]] | None, name: str | No
         box = (0, 0, w, int(0.35 * h))
     crop = arr[box[1]:box[3], box[0]:box[2]]
     out: list[bytes] = []
-    for f in NAME_SCALES:
+    for f in (scales or NAME_SCALES):
         c = crop if f == 1.0 else cv2.resize(crop, None, fx=f, fy=f, interpolation=cv2.INTER_CUBIC)
         ok, png = cv2.imencode(".png", c)
         if ok:
@@ -503,6 +503,7 @@ def surname_votes(client: Any, crops: list[bytes], options: list[str], shuffles:
     return _choice_votes(client, crops, options, text, shuffles)
 
 
+PLAIN_SCALES = (1.0, 1.3, 1.6, 2.0, 2.4, 3.0)      # six sizes of the name line: one reading alone varies with the size (MEASURED: Sumita / Amita / Swita from the same line)
 PLAIN_NAME_PROMPT = "Transcribe exactly the handwriting in this image, letter by letter, on one line."
 _TITLE_WORDS = frozenset("mr mrs ms miss mx smt shri sri kum master dr".split())
 
@@ -538,7 +539,7 @@ def name_reads_split(client: Any, image: bytes, blocks: list[dict[str, Any]] | N
     if not settings.name_reread:
         return [], []
     try:
-        crops = name_crops(image, blocks, name)
+        crops = name_crops(image, blocks, name, PLAIN_SCALES)
     except Exception as exc:  # noqa: BLE001
         log.warning("name_crop_failed", error=str(exc)[:200])
         return [], []
@@ -555,7 +556,7 @@ def name_reads_split(client: Any, image: bytes, blocks: list[dict[str, Any]] | N
 
     with ThreadPoolExecutor(max_workers=len(crops)) as pool:
         plain_reads = [g for g in pool.map(plain, crops) if g]
-    return plain_reads, _name_reads_json(client, crops)
+    return plain_reads, _name_reads_json(client, [crops[i] for i in (0, 2, 4) if i < len(crops)])
 
 
 def name_reads(client: Any, image: bytes, blocks: list[dict[str, Any]] | None, name: str | None) -> list[str]:

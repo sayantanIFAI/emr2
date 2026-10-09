@@ -603,7 +603,7 @@ def _check_the_name(client: Any, image: bytes, blocks: list[dict[str, Any]], pay
     if len(plain_ok) >= 2:
         agreed, how_many, _total = consensus(plain_ok)
         shown_now = payload["patient"].get("name")
-        if agreed and how_many >= 2 and not alike(shown_now, agreed, 0.85):
+        if agreed and how_many >= 2 and agreed != shown_now:
             payload["patient"]["name"] = agreed
             payload["_name_note"] = f"the name line was read the same way {how_many} times as '{agreed}'; the whole-page answer said '{shown_now}'"
     from ..names import prefer_complete
