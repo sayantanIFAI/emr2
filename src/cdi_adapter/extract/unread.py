@@ -33,8 +33,9 @@ def _unusable(text: str, state: str) -> bool:
     t = text or ""
     if re.search(r"\d{1,2}\s*[/.\-]\s*\d{1,2}", t):
         return False                                     # a date, however partly read, is a reading
-    letters = sum(c.isalpha() for c in t)
-    return bool(t) and (t.count("?") / max(1, len(t)) >= 0.4 or letters < 0.4 * len(re.sub(r"\s", "", t)))
+    if sum(c.isdigit() for c in t) >= 7:
+        return False                                     # a phone number is a reading
+    return bool(t) and t.count("?") / max(1, len(t)) >= 0.4
 
 
 def unreadable_order_lines(blocks: list[dict[str, Any]] | None) -> list[tuple[int, str]]:

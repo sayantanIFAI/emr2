@@ -598,6 +598,10 @@ def _check_the_name(client: Any, image: bytes, blocks: list[dict[str, Any]], pay
     fuller = prefer_complete(now, [n for n in payload["_name_reads"] if isinstance(n, str) and not org_like(n)]) if now else now
     if fuller and fuller != now:
         payload["patient"]["name"] = fuller                 # a reading that goes on where the shown one stops (a long name cut short)
+    shown = payload["patient"].get("name")
+    if first and isinstance(shown, str) and len(first.split()) >= 2 and len(shown.split()) == 1:
+        payload["patient"]["name"] = first                  # the re-reads of a small crop gave one word where the page gave a full name
+        payload["_name_note"] = f"the re-reads gave only '{shown}'; the first reading '{first}' is kept"
     _suggest_joined_name(payload)
     if settings.name_choice_votes:
         _suggest_first_names(client, images or [image], blocks, payload)

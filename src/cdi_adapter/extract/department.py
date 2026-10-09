@@ -21,7 +21,7 @@ _DEPARTMENTS: dict[str, re.Pattern[str]] = {
     "ent": re.compile(r"(?i)\b(?:ent\s+clinic|otorhino\w*|otolaryng\w*|ms\s*\(\s*ent\s*\)|ent\s+specialist|ent\s+surgeon)\b"),
     "gynaecology": re.compile(r"(?i)\b(?:gynae\w*|gynec\w*|obstetric\w*|obg|obs\s*&\s*gyn\w*)\b"),
     "ophthalmology": re.compile(r"(?i)\b(?:ophthalm\w*|eye\s+(?:clinic|surgeon|specialist))\b"),
-    "paediatrics": re.compile(r"(?i)\b(?:paediatric\w*|pediatric\w*|dch|child\s+(?:health|specialist))\b"),
+    "paediatrics": re.compile(r"(?i)\b(?:paediatric\w*|pediatric\w*|child\s+(?:health|specialist))\b"),
     "endocrinology": re.compile(r"(?i)\b(?:endocrin\w*|diabet\w*)\b"),
     "rheumatology": re.compile(r"(?i)\b(?:rheumatolog\w*)\b"),
     "general medicine": re.compile(r"(?i)\b(?:general\s+physician|physician|internal\s+medicine|md\s*\(\s*medicine\s*\)|family\s+(?:physician|medicine))\b"),
@@ -55,18 +55,15 @@ def detect(header_texts: list[str] | None) -> str | None:
 
 
 def header_texts(blocks: list[dict[str, Any]] | None, fraction: float = 0.35) -> list[str]:
-    """The text of the top of the first page: where the letterhead (degree, clinic, designation) is."""
-    boxes = []
+    """The PRINTED text of the first page (the letterhead, wherever the clinic puts it: a dental pad prints the doctor's degree at the foot).
+    Handwritten lines are never used: MEASURED on a real page, a garbled handwritten "DCH-" made a dental clinic a paediatric one."""
+    out = []
     for b in blocks or []:
-        try:
-            boxes.append((float(b["bbox"][1]), str(b.get("text") or "")))
-        except (KeyError, TypeError, ValueError, IndexError):
+        rec = b.get("recognition")
+        if isinstance(rec, dict) and rec.get("state") and rec.get("state") != "printed":
             continue
-    if not boxes:
-        return [str(b.get("text") or "") for b in (blocks or [])[:12]]
-    top = min(y for y, _t in boxes)
-    bottom = max(y for y, _t in boxes)
-    return [t for y, t in boxes if y <= top + fraction * max(1.0, bottom - top)]
+        out.append(str(b.get("text") or ""))
+    return out
 
 
 def note(name: str | None, department: str | None) -> tuple[str, str] | None:

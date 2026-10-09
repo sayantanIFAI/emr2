@@ -21,3 +21,8 @@ def test_a_readable_page_and_unreadable_lines_far_from_orders_raise_nothing():
 
 def test_a_printed_line_is_never_flagged():
     assert unread.unreadable_order_lines([blk("Rx", 100), blk("garbled printed", 200, "printed"), blk("Adv", 250)]) == []
+
+
+def test_a_phone_line_and_a_mostly_readable_line_are_not_flagged():
+    page = [blk("Adv", 100), blk("Whatsapp : 9903220441 &9163803044", 200), blk("?1c-9100", 300), blk("review", 400)]
+    assert unread.unreadable_order_lines(page) == []
