@@ -1074,6 +1074,17 @@ def extract_document(document_id: str, *, patient_id: str | None = None,
             payload["_second_look"] = list(extra)          # kept so the result can say where these tests came from
             payload["_text_scan"].update({f.test: f.note for f in test_cluster.scan(focus_blocks, colour) if f.test in extra})
             names += extra
+        try:
+            from . import pair_mate
+            mates = steps.run("pair_mate", pair_mate.resolve, client, image, focus_blocks, {re.sub(r"[^a-z0-9]", "", n.casefold()) for n in names})
+        except Exception as exc:  # noqa: BLE001 - an extra: never cost the document
+            mates = {}
+            log.warning("pair_mate_failed", document_id=document_id, error=str(exc)[:160])
+        for mate, why in mates.items():           # "?APT/SGOT": the half the picture shows, chosen from a short list, never filled in by a rule
+            payload.setdefault("investigations", []).append({"text": mate, "evidence": [], "source": "pair_mate"})
+            payload["_text_scan"][mate] = why
+            payload["_corroborated"] = sorted({*payload.get("_corroborated", []), mate})
+            names.append(mate)
         if listed_entries:                  # after the second look has added its own: "BJS CT" beside BJS and CT says nothing more
             payload["investigations"] = test_cluster.drop_composites(payload.get("investigations") or [], listed_entries)
         # imaging / ECG / physiotherapy, a clinic's printed list of services and the words of a medicine line are not laboratory tests:

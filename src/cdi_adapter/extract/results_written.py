@@ -97,6 +97,39 @@ def _after_has_value(after: str, next_piece: str = "") -> bool:
     return False
 
 
+_ITEM = re.compile(r"\s*[/,&+]\s*[A-Za-z][A-Za-z0-9\-.]{0,18}")
+_WORD_ITEM = re.compile(r"[A-Za-z][A-Za-z0-9\-.]{1,14}")
+_RESULT_WORD = re.compile(r"^(?:\+\s*ve|[-–]\s*ve|positive|negative|reactive|non[- ]?reactive|detected|not\s+detected|nil|wnl|nad)\b", re.I)
+_LEAD = " \t/:;?=.,()-–"
+
+
+def _group_value(after: str, next_piece: str = "") -> bool:
+    """A result written once for a group of names: "HBsAg/Anti-HCV/HIV :- non reactive" (the slash joins the names, the result follows the last),
+    also when the line wrapped and the last names and the result are in the next piece ("HBsAg/Anti-HCV" then "HIV?? non reactive").
+    Only a result WORD counts across pieces, never a number."""
+    rest = after
+    while True:
+        m = _ITEM.match(rest)
+        if not m:
+            break
+        rest = rest[m.end():]
+    tail = rest.lstrip(_LEAD)
+    if _RESULT_WORD.match(tail):
+        return True
+    if tail:
+        return False
+    piece = next_piece
+    for _ in range(3):                           # up to three more names, then the result word
+        piece = piece.lstrip(_LEAD)
+        if _RESULT_WORD.match(piece):
+            return True
+        m = _WORD_ITEM.match(piece)
+        if not m or re.match(r"(?i)(?:non|not)$", m.group(0)):
+            return False
+        piece = piece[m.end():]
+    return False
+
+
 def page_result_reason(key: str, blocks: list[dict[str, Any]] | None) -> str | None:
     """The reason when EVERY occurrence of the name on the page has a value after it (a result already written), else None. A name that is written
     once without a value (the doctor's ordered list) is a test whatever else the page says, also when a reader glued it to its neighbour
@@ -113,10 +146,10 @@ def page_result_reason(key: str, blocks: list[dict[str, Any]] | None) -> str | N
         for m in loose.finditer(text):
             seen += 1
             is_strict = bool(strict.match(text, m.start()))
-            nxt = str(blocks[i + 1].get("text") or "") if i + 1 < len(blocks) and not text[m.end():].strip() else ""
-            if is_strict and _after_has_value(text[m.end():], nxt):
+            nxt = str(blocks[i + 1].get("text") or "") if i + 1 < len(blocks) and not _ITEM.sub("", text[m.end():]).strip(" .?") else ""
+            if is_strict and (_after_has_value(text[m.end():], nxt) or _group_value(text[m.end():], nxt)):
                 valued += 1
-                example = example or text[m.start():min(len(text), m.end() + 14)].strip()
+                example = example or (text[m.start():min(len(text), m.end() + 14)].strip() + (" " + nxt[:18].strip() if nxt and len(text) - m.start() < 20 else ""))
     if seen and valued == seen:
         return f"a result is already written next to it ('{example}'): not a test to be done"
     return None

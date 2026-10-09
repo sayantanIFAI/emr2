@@ -50,3 +50,20 @@ def test_a_middle_dot_between_name_and_value_and_a_glued_ordered_list():
     blocks = [{"text": "?CRP-0.02 (<0.8)"}, {"text": "4CBCCRP"}, {"text": "Creatinine ? SAPT/"}]
     assert W.page_result_reason("CRP", blocks) is None                 # written in the ordered list too, glued to CBC by the reader
     assert W.page_result_reason("Creatinine", blocks) is None
+
+
+def test_one_result_written_for_a_group_of_names_joined_by_slashes():
+    # MEASURED on a real page: "HBsAg/Anti-HCV" then, on the wrapped next piece, "HIV?? non reactive": all three are results, none a test to be done
+    blocks = [{"text": "?HBsAg/Anti-HCV"}, {"text": "HIV?? non reactive."}, {"text": "CBC Creatinine ?APT/SGOT CRP"}]
+    assert W.page_result_reason("HBsAg", blocks).startswith("a result is already written")
+    assert W.page_result_reason("Anti-HCV", blocks).startswith("a result is already written")
+    assert W.page_result_reason("CBC", blocks) is None
+    assert W.page_result_reason("SGOT", blocks) is None
+
+
+def test_a_group_result_in_the_same_line_and_a_list_without_a_result():
+    same = [{"text": "HBsAg / Anti-HCV / HIV :- non reactive"}]
+    assert W.page_result_reason("HBsAg", same) is not None and W.page_result_reason("HIV", same) is not None
+    plain = [{"text": "HbA1c/FBS/PPBS/TSH"}, {"text": "Normal diet and walk"}]
+    assert W.page_result_reason("FBS", plain) is None and W.page_result_reason("TSH", plain) is None
+    assert W.page_result_reason("HbA1c", plain) is None
