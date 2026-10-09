@@ -223,6 +223,23 @@ def _patient_name(doc: dict[str, Any], c: dict[str, Any]) -> dict[str, Any]:
     return v
 
 
+def _confirmed_names_for(doc: dict[str, Any], shown: str | None) -> list[str]:
+    """Names a person CONFIRMED on other prescriptions of the same mobile number that are at least 75 % alike the name read here ("Smita Gupta
+    Gangopadhyay" read from a blurred photo of a patient confirmed earlier as "Sumita Gupta Gangopadhyay"). Only offered as a choice: the name
+    shown is never replaced, and a person confirms it. [] without a mobile number or a name."""
+    phone, did = (doc.get("phone") or "").strip(), str(doc.get("id") or "")
+    if not phone or not shown:
+        return []
+    from ..names import alike
+    try:
+        with session_scope() as sess:
+            rows = sess.execute(text("SELECT DISTINCT patient_name FROM source_document WHERE phone = :p AND name_confirmed_at IS NOT NULL "
+                                     "AND patient_name IS NOT NULL AND id <> CAST(:d AS uuid)"), {"p": phone, "d": did or "00000000-0000-0000-0000-000000000000"}).all()
+    except Exception:  # noqa: BLE001 - an extra: never cost the result
+        return []
+    return [r[0].strip() for r in rows if r[0] and r[0].strip() and alike(shown, r[0], 0.75)][:3]
+
+
 def _intake(doc: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     """What the front desk typed (token, mobile), the name as shown, as read, whether a person confirmed it, and the other
     readings of the name (so the screen can offer them)."""
@@ -231,6 +248,10 @@ def _intake(doc: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     from ..names import name_key, org_like
 
     seen = {name_key(shown)}                       # "MR. Debabrata Sanwar" and "Debabrata Sanwar" are one offer
+    for n in _confirmed_names_for(doc, shown):      # a name a person already confirmed for this mobile number, close to the one read: offered FIRST
+        if name_key(n) not in seen:
+            seen.add(name_key(n))
+            cands.append(n)
     for n in payload.get("_name_reads") or []:
         if isinstance(n, str) and n.strip() and name_key(n) not in seen and not org_like(n):
             seen.add(name_key(n))

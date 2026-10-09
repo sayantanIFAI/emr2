@@ -105,6 +105,11 @@ def confirm_name(document_id: str, name: str, by: str) -> dict[str, Any] | None:
             return None
         repo.write_audit(sess, actor=by[:60], action="update", entity="source_document", entity_id=document_id,
                          detail={"patient_name_confirmed": name, "name_read": row["name_read"]})
+    try:
+        from ..output import flat_table
+        flat_table.save_document(document_id)               # the table shows the confirmed name
+    except Exception:  # noqa: BLE001 - an extra: never cost the confirmation
+        pass
     return {"document_id": document_id, "patient_name": name, "name_read": row["name_read"], "phone": row["phone"],
             "token_no": row["token_no"], "name_confirmed": True, "name_confirmed_by": by[:60]}
 

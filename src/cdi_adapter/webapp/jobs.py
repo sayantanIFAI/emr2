@@ -37,7 +37,7 @@ _pool = ThreadPoolExecutor(max_workers=max(2, settings.job_max_workers),
 # Each upload (a "job") gets a thread of its own that waits on its files' work in _pool. They must not
 # share _pool: with as many jobs in flight as _pool has threads, every thread would be a job waiting on
 # children that can never start (a hang). Jobs wait in this queue; more can be sent while others run.
-_job_pool = ThreadPoolExecutor(max_workers=max(4, settings.job_max_concurrent),
+_job_pool = ThreadPoolExecutor(max_workers=max(1, settings.job_max_concurrent),
                                thread_name_prefix="cdi-run")
 # separate pool for the phase-2 fan-out so a _run_job thread waiting on its
 # children can never starve _pool (which also hosts _run_job itself)
@@ -127,7 +127,26 @@ class Job:
             "needs_review": (self.result or {}).get("needs_review"),
             "review_open": (self.result or {}).get("review_open"),
             "has_result": self.result is not None,
+            "queue_position": queue_position(self),               # prescriptions that start before this one; None once it is being read
         }
+
+
+class QueueFull(RuntimeError):
+    """More prescriptions are in flight (being read or waiting) than ``settings.job_queue_max``."""
+
+
+def in_flight() -> int:
+    """Prescriptions being read or waiting to be read."""
+    with _lock:
+        return sum(1 for j in _jobs.values() if j.state in ("queued", "running"))
+
+
+def queue_position(job: "Job") -> int | None:
+    """How many prescriptions will start before this one (0 = next); ``None`` once it is being read or finished."""
+    if job.state != "queued":
+        return None
+    with _lock:
+        return sum(1 for j in _jobs.values() if j.state == "queued" and j.created < job.created)
 
 
 def create_job(abha: str | None, files: list[tuple[str, bytes]],
@@ -136,6 +155,9 @@ def create_job(abha: str | None, files: list[tuple[str, bytes]],
                idempotency_key: str | None = None,
                token_no: str | None = None, phone: str | None = None) -> str:
     jid = uuid.uuid4().hex[:12]
+    if in_flight() >= settings.job_queue_max and not (idempotency_key and idempotency_key in _idem):
+        raise QueueFull(f"{settings.job_queue_max} prescriptions are already being read or waiting. "
+                        f"Please wait a minute until one finishes, then send this one.")
     if idempotency_key:
         now = time.time()
         with _lock:
@@ -410,6 +432,12 @@ def _stage2(job: "Job", prog: DocProg,
         v = validate_document(prog.document_id)
         prog.accepted, prog.in_review = v.auto_accepted, v.in_review
         prog.stage("validate", "done")
+
+        try:
+            from ..output import flat_table
+            flat_table.save_document(prog.document_id)        # the flat table row(s) of this prescription (searched by mobile or token number)
+        except Exception as exc:  # noqa: BLE001 - the table is an extra: never cost the read
+            log.warning("flat_table_failed", document_id=prog.document_id, error=str(exc)[:150])
 
         prog.status = "done"
         prog.seconds = time.time() - prog.t0

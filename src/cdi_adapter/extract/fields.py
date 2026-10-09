@@ -172,10 +172,20 @@ def _age_years(text: Any) -> int | None:
     return None
 
 
+def _age_on_page(age_text: Any, page: str) -> bool:
+    """The age's number is written on the page followed by a unit of years (73yrs, 73 Y, 73 years, 73/F ...)."""
+    yrs = _age_years(age_text)
+    if yrs is None or yrs == 0:
+        return False
+    return bool(re.search(r"(?<![0-9.])" + str(yrs) + r"\s*(?:y(?![a-z])|yr|yrs|year|years|[/|])", page or "", re.IGNORECASE))
+
+
 def check_age_and_dob(age_text: Any, dob_raw: Any, page: str, today: date) -> tuple[dict, dict]:
     """Age as written and date of birth: each plausible, each on the page, and not contradicting
     each other (more than a year apart goes to review for BOTH)."""
     age_c = check_text(age_text, page) if age_text else absent()
+    if age_text and age_c["status"] != CHECKED and _age_on_page(age_text, page):
+        age_c = check(age_c["value"], CHECKED)               # "73 yrs" is written as "73yrs" / "73 Yrs |": the number with its unit is on the page
     dob_c = absent()
     dob = None
     if isinstance(dob_raw, str) and dob_raw.strip():

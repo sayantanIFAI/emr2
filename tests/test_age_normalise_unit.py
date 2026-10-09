@@ -12,3 +12,11 @@ def test_other_texts_are_left_alone():
     assert normalise_age("73 yrs") == ("73 yrs", None)
     assert normalise_age("6 months") == ("6 months", None)
     assert normalise_age(None) == (None, None)
+
+
+def test_the_age_is_checked_against_a_number_with_its_unit_on_the_page():
+    from cdi_adapter.extract.fields import _age_on_page
+    assert _age_on_page("73 yrs", "Sumita Gupta | 73yrs | Female")
+    assert _age_on_page("73 yrs", "Sumita Gupta Gangopadhyay 73 Yrs/ Female")
+    assert not _age_on_page("73 yrs", "Plt 73 lakhs, ESR 12")
+    assert not _age_on_page("74 yrs", "Sumita Gupta | 73yrs | Female")

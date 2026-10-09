@@ -234,7 +234,7 @@ def _by_pen_marks(found: list[tuple[int, Found]], blocks: list[dict[str, Any]] |
 
 
 _REPORT_HEAD = re.compile(r"(?i)^\W*(?:report|results?)\W*$")
-_STOP_HEAD = re.compile(r"(?i)(?:r[eo]v[il]?ew|adv(?:ice)?|advised|inv(?:estigations?)?|follow\s*up|rx)")
+_STOP_HEAD = re.compile(r"(?i)\b(?:r[eo]v[il]?ew|adv(?:ice)?|advised|inv(?:estigations?)?|follow\s*up|rx)\b")
 _SEP = re.compile(r"[,;/+&|]")
 
 

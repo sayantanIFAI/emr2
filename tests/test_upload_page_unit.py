@@ -41,9 +41,15 @@ def test_the_upload_section_is_hidden_until_the_token_and_the_mobile_number_are_
 
 
 # ---- 2. prescriptions already uploaded for this number: say so, with an option to proceed
-def test_an_existing_upload_for_the_number_is_announced_and_waits_for_proceed():
-    assert 'id="existing"' in ADMIN_PAGE and 'id="proceed"' in ADMIN_PAGE and "api/intake/existing" in ADMIN_PAGE
-    assert "(!dup||ACK===d)" in ADMIN_PAGE                                                   # the upload waits for Proceed
+def test_an_existing_upload_for_the_number_is_announced_and_the_upload_step_opens_by_itself():
+    assert 'id="existing"' in ADMIN_PAGE and "api/intake/existing" in ADMIN_PAGE
+    assert 'id="proceed"' not in ADMIN_PAGE or "button" not in ADMIN_PAGE.split('id="proceed"')[0][-40:]    # no Proceed button to press
+    assert "(!dup||ACK===d)" not in ADMIN_PAGE                                               # the upload step opens as soon as token + valid mobile number are in
+    assert "const open=tOk&&pOk&&have;" in ADMIN_PAGE
+
+
+def test_a_waiting_prescription_shows_its_place_in_the_queue():
+    assert "queue_position" in ADMIN_PAGE and "ahead" in ADMIN_PAGE
 
 
 # ---- 3 / 4. by patient (name + mobile number), never by batch; collapsible
@@ -201,3 +207,8 @@ def test_the_refusal_for_a_used_token_is_drawn_after_the_token_check_returns():
 
 def test_each_test_shows_the_lab_list_result_and_the_page_match_score():
     assert "lab list: recognised" in ADMIN_PAGE and "lab list: not placed" in ADMIN_PAGE and "page match " in ADMIN_PAGE
+
+
+def test_the_extracted_tab_has_a_table_searched_by_mobile_or_token_number():
+    assert 'id="fl-phone"' in ADMIN_PAGE and 'id="fl-token"' in ADMIN_PAGE and "api/flat/search" in ADMIN_PAGE and 'id="fl-csv"' in ADMIN_PAGE
+    assert "Standard name" in ADMIN_PAGE and "Booking when" in ADMIN_PAGE

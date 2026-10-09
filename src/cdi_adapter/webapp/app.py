@@ -300,11 +300,38 @@ async def submit_job(
     except upload.UploadError as exc:
         raise HTTPException(exc.status, str(exc)) from exc
     key = (idempotency_key or "").strip()
+
     if key and not (len(key) <= 64 and key.replace("-", "").replace("_", "").isalnum()):
         raise HTTPException(422, "Invalid request, please reload the page and try again.")
-    jid = create_job(abha_n, [(i.name, i.data) for i in items], patient_ref=ref,
-                     parts=[i.parts for i in items], idempotency_key=key or None, token_no=token, phone=mobile)
+    from .jobs import QueueFull
+    try:
+        jid = create_job(abha_n, [(i.name, i.data) for i in items], patient_ref=ref,
+                         parts=[i.parts for i in items], idempotency_key=key or None, token_no=token, phone=mobile)
+    except QueueFull as exc:                           # 10 prescriptions are in flight: a plain "wait a minute", not an error page
+        raise HTTPException(429, str(exc)) from exc
     return {"job_id": jid, "documents": len(items)}
+
+
+@app.get("/api/flat/search")
+def flat_search(phone: str = "", token: str = "", fmt: str = "json", limit: int = 500) -> Any:
+    """The flat table (``prescription_flat``): one row per prescription x lab test, found by mobile number and / or token number.
+    ``fmt=csv`` downloads every column; the default is the columns the Extracted tab shows."""
+    from ..output import flat_table
+    if not (phone.strip() or token.strip()):
+        return {"columns": flat_table.SCREEN_COLUMNS, "rows": []}
+    if fmt == "csv":
+        import csv
+        import io
+        rows = flat_table.search(phone, token, limit)
+        buf = io.StringIO()
+        cols = [c for c in flat_table.COLUMN_NAMES if c != "raw_result"]
+        w = csv.writer(buf)
+        w.writerow(cols)
+        for r in rows:
+            w.writerow(["" if r.get(c) is None else (r[c] if not isinstance(r[c], (dict, list)) else json.dumps(r[c], ensure_ascii=False)) for c in cols])
+        return Response(content="﻿" + buf.getvalue(), media_type="text/csv; charset=utf-8",
+                        headers={"Content-Disposition": 'attachment; filename="prescriptions.csv"'})
+    return {"columns": flat_table.SCREEN_COLUMNS, "rows": flat_table.search(phone, token, limit, columns=flat_table.SCREEN_COLUMNS)}
 
 
 @app.get("/api/jobs/{job_id}")

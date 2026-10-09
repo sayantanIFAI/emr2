@@ -362,7 +362,8 @@ class Settings(BaseSettings):
     upload_require_intake: bool = True     # the token and mobile number must be sent with an upload from the screen
     lab_mapping_db: bool = True            # the lab-name mapping table is read from the database (False: the built-in seed only)
     llm_resolve_enabled: bool = True       # the model may CHOOSE among reference names for a misread test (resolve_llm.py)
-    job_max_concurrent: int = 8           # uploads ("jobs") in progress at once; more wait in a queue
+    job_max_concurrent: int = 5           # prescriptions ("jobs") READ at once; the next ones wait their turn in the order they were sent
+    job_queue_max: int = 10               # prescriptions in flight (being read + waiting); one more is refused with a plain message until one finishes
     fast_classify: bool = True           # try the scored heuristic classifier first; it only
                                          # short-circuits the VLM on an unambiguous, cleanly
                                          # OCR'd page - everything else still goes to the VLM

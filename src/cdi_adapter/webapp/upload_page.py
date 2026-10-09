@@ -116,8 +116,7 @@ details.sec>summary{font-weight:650;font-size:15px;min-height:40px}
     <div class="notice-warn" id="existing" hidden aria-live="polite">
       <div id="existing-msg"></div>
       <ul id="existing-list"></ul>
-      <button class="btn btn-primary btn-sm" type="button" id="proceed">Proceed</button>
-      <span class="muted"> Proceed only if this is a new prescription, or more pages of the same token.</span>
+      <span class="muted">The upload step below is open: send this one if it is a new prescription, or more pages of the same token.</span>
     </div>
   </div>
 
@@ -165,6 +164,17 @@ details.sec>summary{font-weight:650;font-size:15px;min-height:40px}
   </div>
 </section>
 <section id="panel-ex" role="tabpanel" aria-labelledby="tab-ex" hidden>
+  <div class="card" id="flat-card">
+    <h2>Extracted details (table)</h2>
+    <p class="hint">One row per prescription and lab test. Type the patient's mobile number or the token number: the rows appear as you type.</p>
+    <div class="row2">
+      <div class="fld"><label for="fl-phone">Mobile number</label><input type="text" id="fl-phone" inputmode="numeric" maxlength="18" autocomplete="off" placeholder="10 digits or part of it"/></div>
+      <div class="fld"><label for="fl-token">Token number</label><input type="text" id="fl-token" maxlength="20" autocomplete="off" placeholder="for example T-17"/></div>
+    </div>
+    <div class="muted" id="fl-note" aria-live="polite"></div>
+    <div style="overflow-x:auto"><table class="emr-grid" id="fl-table" hidden></table></div>
+    <p><a class="btn btn-ghost btn-sm" id="fl-csv" href="#" hidden>Download all columns (CSV)</a></p>
+  </div>
   <div class="card" id="patients-card">
     <h2>Extracted prescriptions</h2>
     <p class="hint">Type part of a mobile number (or a name) to find a patient. Results are grouped by patient, not by upload.</p>
@@ -242,6 +252,29 @@ function showTab(name){
   try{ history.replaceState(null,"",ex?"#extracted":"#upload"); }catch(e){}
 }
 function badge(){ const b=$("#ex-badge"); b.hidden=!NEWCOUNT; b.textContent=NEWCOUNT?(NEWCOUNT+" new"):""; }
+// ---- the flat table: one row per prescription x lab test, found by mobile number or token number ------------------
+const FLAT_HEAD={intake_token_no:"Token",intake_phone:"Mobile",patient_name:"Patient",patient_name_status:"Name check",patient_age_text:"Age",patient_sex:"Sex",
+  doctor_name:"Doctor",doctor_department:"Department",doctor_clinic_name:"Clinic",doc_type:"Type",result_status:"Result",latest_visit_date:"Visit date",
+  lab_test_seq:"#",lab_test_as_written:"Test (as written)",lab_test_standard_name:"Standard name",lab_test_status:"Test check",lab_test_reason:"Why",
+  booking_needed:"Booking needed",booking_when_text:"Booking when",booking_as_written:"Booking (as written)",document_id:"Document"};
+let FLAT_TIMER=null,FLAT_SEQ=0;
+function flatQuery(){ return "phone="+encodeURIComponent($("#fl-phone").value.replace(/[^0-9]/g,""))+"&token="+encodeURIComponent($("#fl-token").value.trim()); }
+async function flatSearch(){
+  const phone=$("#fl-phone").value.replace(/[^0-9]/g,""), token=$("#fl-token").value.trim(), tb=$("#fl-table"), note=$("#fl-note"), csv=$("#fl-csv");
+  if(!phone&&!token){ tb.hidden=true; csv.hidden=true; note.textContent=""; return; }
+  const my=++FLAT_SEQ; note.textContent="searching…";
+  let j=null; try{ const r=await fetch("api/flat/search?"+flatQuery()); if(r.ok) j=await r.json(); }catch(e){}
+  if(my!==FLAT_SEQ) return;
+  if(!j){ note.textContent="The table could not be read just now. Please try again."; tb.hidden=true; csv.hidden=true; return; }
+  const cols=j.columns, rows=j.rows;
+  if(!rows.length){ note.textContent="Nothing found for this mobile number / token number."; tb.hidden=true; csv.hidden=true; return; }
+  const docs=new Set(rows.map(r=>r.document_id)).size;
+  note.textContent=docs+" prescription"+(docs===1?"":"s")+", "+rows.length+" row"+(rows.length===1?"":"s")+".";
+  tb.innerHTML="<thead><tr>"+cols.map(c=>"<th>"+esc(FLAT_HEAD[c]||c)+"</th>").join("")+"</tr></thead><tbody>"
+    +rows.map(r=>"<tr>"+cols.map(c=>"<td>"+(r[c]==null||r[c]===""?'<span class="none">—</span>':esc(c==="document_id"?String(r[c]).slice(0,8):r[c]))+"</td>").join("")+"</tr>").join("")+"</tbody>";
+  tb.hidden=false; csv.href="api/flat/search?fmt=csv&"+flatQuery(); csv.hidden=false;
+}
+for(const id of ["#fl-phone","#fl-token"]) $(id).addEventListener("input",()=>{ clearTimeout(FLAT_TIMER); FLAT_TIMER=setTimeout(flatSearch,250); });
 $("#tab-up").onclick=()=>showTab("up");
 $("#tab-ex").onclick=()=>showTab("ex");
 $(".tabs").addEventListener("keydown",e=>{
@@ -278,9 +311,11 @@ function gate(){
     $("#existing-list").innerHTML=EXIST.prescriptions.slice(0,5).map(p=>'<li>Token '+esc(p.token_no||"—")+' · '+esc(p.patient_name||"name not read")+' · '+esc(fmtDate(p.uploaded))+' · '+esc(p.filename||"")+'</li>').join("")
       +(EXIST.count>5?'<li class="none">and '+(EXIST.count-5)+' more</li>':"");
   }
-  const open=tOk&&pOk&&have&&(!dup||ACK===d);
+  const open=tOk&&pOk&&have;                              // the upload step opens by itself once the token and a valid mobile number are in: no button to press (an earlier upload for this number is only shown as a note)
+  const wasOpen=!$("#form-card").hidden;
   $("#form-card").hidden=!open;
   $("#pt-sum").textContent=open?("Token "+t+" · mobile "+fmtPhone(d)):"";
+  if(open&&!wasOpen){ try{ $("#form-card").scrollIntoView({behavior:"smooth",block:"nearest"}); }catch(e){} }
   if(!open) say("");
   render();
 }
@@ -305,7 +340,7 @@ async function checkExisting(){
 }
 $("#token").addEventListener("input",()=>{ SEND_KEY=null; gate(); checkToken(); });
 $("#phone").addEventListener("input",()=>{ SEND_KEY=null; ACK=""; gate(); checkExisting(); checkToken(); });
-$("#proceed").onclick=()=>{ ACK=phoneDigits($("#phone").value); gate(); };
+$("#proceed")&&($("#proceed").onclick=()=>{ ACK=phoneDigits($("#phone").value); gate(); });
 
 // ---- autocomplete (a list of thousands is never shown: type, then choose) ---------------------------------
 function suggest(input,list,fetcher,label,onPick){
@@ -789,11 +824,11 @@ function renderJobs(){
   $("#jobs").innerHTML=JOBS.map(job=>{
     const j=job.j, running=!job.finished;
     const who=(j&&j.patient_name)||null;
-    const state=job.err?'<span class="pill warn">stopped</span>':running?(j&&j.state==="running"?'<span class="pill">reading…</span>':'<span class="pill">waiting…</span>'):'<span class="pill ok">done</span>';
+    const state=job.err?'<span class="pill warn">stopped</span>':running?(j&&j.state==="running"?'<span class="pill">reading…</span>':'<span class="pill">'+(j&&j.queue_position!=null?(j.queue_position===0?'waiting · next':'waiting · '+j.queue_position+' ahead'):'waiting…')+'</span>'):'<span class="pill ok">done</span>';
     return '<details class="cf-det jobbox" data-j="'+esc(job.id)+'"'+(JOB_CLOSED.has(job.id)?"":" open")+'><summary><b>'+esc(who||"Reading the name…")+'</b> · '+esc(fmtPhone(job.phone))
       +' · token '+esc(job.token)+' '+state+'</summary><div class="det-body">'
       +(job.err?'<div class="jerr" role="alert">'+esc(job.err)+'</div>':'')
-      +(j?'<div style="overflow-x:auto"><table class="emr-grid">'+jobGrid(j)+'</table></div>':'<div class="muted">sent — waiting to start…</div>')
+      +(j?'<div style="overflow-x:auto"><table class="emr-grid">'+jobGrid(j)+'</table></div>':'<div class="muted">sent — '+(j&&j.queue_position!=null?(j.queue_position===0?'it is next to be read':j.queue_position+' prescription'+(j.queue_position===1?'':'s')+' ahead of it (5 are read at a time)'):'waiting to start')+'…</div>')
       +(j?j.documents.filter(d=>d.document_id).map(d=>'<div style="margin-top:8px"><button type="button" class="btn btn-ghost btn-sm img-open" data-doc="'+esc(d.document_id)+'" data-pages="1" aria-label="View the uploaded image full screen">View image: '+esc(d.filename)+'</button></div>').join(""):"")
       +(job.finished&&!job.err?'<div style="margin-top:8px"><button type="button" class="btn btn-primary btn-sm job-go" data-job="'+esc(job.id)+'">Read: open in Extracted ›</button></div>':'')
       +'<div class="muted" style="margin-top:6px">'+esc(job.names.join(", "))+'</div></div></details>';
