@@ -89,7 +89,10 @@ def is_result_entry(text: str | None) -> bool:
 def _after_has_value(after: str, next_piece: str = "") -> bool:
     """Does what follows a test name (in its line, or the piece written right after it) start with a value?"""
     a = after.lstrip(" \t")
-    probes = [a, a[1:].lstrip() if a[:1] in "-–:=(" else a, next_piece.lstrip()]
+    nxt = next_piece.lstrip()
+    if nxt and not re.match(r"^\(?\s*(?:\d|\+\s*ve|[-–]\s*ve)", nxt) and len(nxt.strip()) > 14:
+        nxt = ""                      # a result in words is the whole next piece ("Normal"), not the start of a sentence ("Normal diet and walk")
+    probes = [a, a[1:].lstrip() if a[:1] in "-–:=(" else a, nxt]
     pat = re.compile(r"^\(?\s*(?:" + _NUM + r"|\+\s*ve|[-–]\s*ve|positive|negative|reactive|non[- ]?reactive|normal|wnl|nad|detected|not\s+detected|nil)\b", re.I)
     for p in probes:
         if pat.match(p) and not re.match(r"^\(?\s*\d+(?:[.,]\d+)?\s*(?:hrs?|hours?|days?|d\b|wks?|weeks?|months?|mo\b|min)\b", p, re.I):
