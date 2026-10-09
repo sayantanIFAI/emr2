@@ -82,7 +82,9 @@ def line_reason(key: str, blocks: list[dict[str, Any]] | None, *, lab_only: bool
             reasons.append(f"written in a line that is {r.split(',')[0]}")
         elif len(_BULLETS.findall(text)) >= 2 or len(_SERVICE_WORDS.findall(text)) >= 3:
             reasons.append("part of the clinic's printed list of services")
-        elif (looks_like_medicine(text) or _MEDICINE_MARK.search(text)) and (not whole or re.search(r"(?i)\b(?:tabs?|caps?|inj|syp|syr)\b", text)):
+        elif ((not whole and (looks_like_medicine(text) or _MEDICINE_MARK.search(text)))
+              or (whole and re.search(r"(?i)\b(?:tabs?|caps?|inj|syp|syr)\b\.?\s*" + re.escape(key.strip()) + r"(?![a-z0-9])", text))):
+            # the name is the start of a brand ("Zincovit") or directly follows a form word ("Tab Zinc"); a test written beside a medicine stays
             reasons.append("part of a medicine line")
         else:
             return None                        # at least one line is a plain test line: keep it

@@ -31,3 +31,9 @@ def test_mixed_line_keeps_the_tests_and_drops_only_imaging():
 def test_a_name_with_its_own_line_is_kept():
     page = B("Tab Zincovit 1 tab", "Zinc level")
     assert N.line_reason("Zinc", page) is None
+
+
+def test_a_test_written_on_the_same_line_as_a_medicine_is_kept():
+    assert N.line_reason("TSHH", B("tshh  tab pantocid")) is None
+    assert N.line_reason("CBC", B("Tab Pantocid 40 1 tab OD  CBC, LFT")) is None
+    assert N.line_reason("Zinc", B("Tab Zinc 1 tab after lunch")) == "part of a medicine line"
