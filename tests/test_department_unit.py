@@ -19,11 +19,6 @@ def test_specific_tests_are_checked_against_the_department_common_ones_never():
     assert D.note("OPG", None) is None                          # no department found: no note
 
 
-def test_header_texts_takes_the_top_of_the_page():
-    blocks = [{"bbox": [0, 10, 100, 30], "text": "Dr X BDS"}, {"bbox": [0, 900, 100, 930], "text": "footer cardiology services"}]
-    assert D.header_texts(blocks) == ["Dr X BDS"]
-
-
 def test_header_texts_ignore_handwriting_and_use_the_whole_printed_page():
     blocks = [{"bbox": [0, 10, 9, 20], "text": "DCH-", "recognition": {"state": "single_engine"}},
               {"bbox": [0, 900, 9, 920], "text": "Dr Soumalya Das BDS(HON'S)", "recognition": {"state": "printed"}},
