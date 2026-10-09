@@ -358,6 +358,11 @@ def build_result(inp: ResultInputs) -> dict[str, Any]:
             elif _norm_name(key) in corroborated:
                 # the whole-page answer named it and a second look at ENLARGED views of the page read it again in enough different views
                 t["reason"] = SECOND_LOOK + (f": {t['reason']}" if t.get("reason") else "")
+            elif pv is not None and pv >= settings.unseen_ok_p:
+                # no line reader saw it, but asked directly at the whole page whether this test is written there, the model is sure: a second view
+                # (a different question), listed for a person to check against the image
+                t["reason"] = (f"no line reader saw it, but the model confirmed it when asked directly (probability {pv:.2f}): check the image"
+                               + (f"; {t['reason']}" if t.get("reason") else ""))
             else:
                 # no line reader saw it and no second view agrees: only the whole-page answer said so (MEASURED: it adds "INR" to "PT / APTT" by
                 # habit). Not listed as a test; kept in the result with this reason.

@@ -253,3 +253,19 @@ def test_a_test_the_lists_place_is_never_rejected_and_a_medicine_line_with_a_loo
     assert t["status"] == "rejected" and t["reason"].startswith(UNCONFIRMED)
     t2 = jc.build_result(T._inputs([fact], payload={**T.PAYLOAD, "_corroborated": ["Tab Creat 500 mg 1 tab OD"]}, blocks=blocks))["lab_tests"][0]
     assert t2["status"] != "rejected" and t2["reason"].startswith(SECOND_LOOK)       # a second look read it again in enough views: listed
+
+
+def test_an_unseen_test_the_model_confirms_when_asked_directly_is_listed_for_a_check(monkeypatch):
+    import test_json_connector_unit as T
+    from cdi_adapter.extract import lab_resolve
+    from cdi_adapter.extract.test_names import UNCONFIRMED
+    from cdi_adapter.output import json_connector as jc
+
+    placed = lab_resolve.Resolved("test", "2160-0", "bound", ("2160-0",), "Creatinine", "mapping", False)
+    monkeypatch.setattr(lab_resolve, "resolve", lambda x: placed if "creat" in (x or "").lower() else None)
+    fact = T._fact("investigation_order", "Creatinine", state="in_review", code_status="unmapped", conf=0.4)
+    blocks = [{"text": "unrelated words only", "page_id": "p1"}]
+    sure = jc.build_result(jc.ResultInputs(**{**T._inputs([fact], payload={**T.PAYLOAD, "_verify": {"Creatinine": 0.92}}, blocks=blocks).__dict__}))["lab_tests"][0]
+    assert sure["status"] == "needs_check" and "asked directly" in sure["reason"]
+    unsure = jc.build_result(jc.ResultInputs(**{**T._inputs([fact], payload={**T.PAYLOAD, "_verify": {"Creatinine": 0.2}}, blocks=blocks).__dict__}))["lab_tests"][0]
+    assert unsure["status"] == "rejected" and unsure["reason"].startswith(UNCONFIRMED)
