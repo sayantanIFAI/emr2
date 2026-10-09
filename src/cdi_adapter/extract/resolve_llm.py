@@ -378,20 +378,31 @@ def name_row_box(best: dict[str, Any], blocks: list[dict[str, Any]] | None) -> t
 
 
 def best_name_block(blocks: list[dict[str, Any]] | None, name: str | None) -> dict[str, Any] | None:
-    """The OCR piece that shares the most words with the name already read (None when none shares one)."""
+    """The OCR piece of the PATIENT's name line that shares the most words with the name already read (None when none shares one). The doctor's
+    printed name line is never it: MEASURED on a real page, "Gangopadhyay" matched the doctor's printed "Dr. Shatabdi Chattopadhyay" at the top,
+    so the name crops, the age / sex piece and the re-reads all came from the letterhead. Printed pieces and pieces that start with Dr / Prof are
+    skipped; of the rest the one with the best total match wins (the first only on a tie)."""
     from ..names import name_key
 
     toks = [t for t in name_key(name).split() if len(t) >= 3]
-    best, score = None, 0
+    best, best_key = None, (0, 0.0)
     for b in blocks or []:
         if not b.get("bbox"):
             continue
-        bt = name_key(b.get("text")).split()
+        text = str(b.get("text") or "")
+        rec = b.get("recognition")
+        if (isinstance(rec, dict) and rec.get("state") == "printed") or re.match(r"(?i)^\W*(?:dr|prof|doctor)\b", text.strip()):
+            continue
+        bt = name_key(text).split()
         glued = "".join(bt)                                          # the readers often drop the spaces: "SAYANDAS(40Y/MALE)"
-        s = sum(1 for t in toks if difflib.get_close_matches(t, bt, n=1, cutoff=0.7) or (len(t) >= 4 and t in glued))
-        if s > score:
-            best, score = b, s
-    return best if score >= 1 else None
+        ratios = []
+        for t in toks:
+            close = difflib.get_close_matches(t, bt, n=1, cutoff=0.7)
+            ratios.append(difflib.SequenceMatcher(None, t, close[0]).ratio() if close else (1.0 if len(t) >= 4 and t in glued else 0.0))
+        key = (sum(1 for r in ratios if r > 0), sum(ratios))
+        if key > best_key:
+            best, best_key = b, key
+    return best if best_key[0] >= 1 else None
 
 
 def name_crops(image: bytes, blocks: list[dict[str, Any]] | None, name: str | None, scales: tuple[float, ...] | None = None) -> list[bytes]:
@@ -406,17 +417,8 @@ def name_crops(image: bytes, blocks: list[dict[str, Any]] | None, name: str | No
     if arr is None:
         return []
     h, w = arr.shape[:2]
-    toks = [t for t in name_key(name).split() if len(t) >= 3]
-    best, score = None, 0
-    for b in blocks or []:
-        if not b.get("bbox"):
-            continue
-        bt = name_key(b.get("text")).split()
-        glued = "".join(bt)                                          # the readers often drop the spaces: "SAYANDAS(40Y/MALE)"
-        s = sum(1 for t in toks if difflib.get_close_matches(t, bt, n=1, cutoff=0.7) or (len(t) >= 4 and t in glued))
-        if s > score:
-            best, score = b, s
-    if best is not None and score >= 1:
+    best = best_name_block(blocks, name)
+    if best is not None:
         x0, y0, x1, y1 = name_row_box(best, blocks)
         px, py = max(30, int(0.03 * w)), max(14, int(0.012 * h))
         box = (max(0, x0 - px), max(0, y0 - py), min(w, x1 + px), min(h, y1 + py))
