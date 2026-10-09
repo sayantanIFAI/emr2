@@ -337,8 +337,8 @@ class Settings(BaseSettings):
     followup_second_look: bool = True
     lab_tests_only: bool = True          # imaging, ECG / EEG and physiotherapy entries are not listed as laboratory tests (extract/not_lab.py); OFF lists them as investigations
     recall_reroute: bool = True          # a page typed other / operative_note / lab_report whose own text holds ordered tests is handled as a prescription (extract/recall.py)
-    extract_compact_answer: bool = True  # the main page answer leaves out the evidence lists and the empty system / code fields; the program links the OCR blocks afterwards (extract/evidence.py): fewer tokens written
-    skip_second_look_when_agree: bool = True   # the enlarged second look is skipped when the page text scan and the main answer already name the same tests
+    extract_compact_answer: bool = False  # OFF: MEASURED on 17 pages it saved 0.3 s and recall fell 81% -> 73% in one run (not settled: run-to-run noise is about 3 points). The main page answer leaves out the evidence lists and the empty system / code fields; the program links the OCR blocks afterwards (extract/evidence.py): fewer tokens written
+    skip_second_look_when_agree: bool = False   # OFF: MEASURED no time saved (15.3 s with and without): the text and the answer rarely name exactly the same tests. The enlarged second look is skipped when the page text scan and the main answer already name the same tests
     prefetch_main_call: bool = False     # start the main page call right after classification, in parallel with the line reading (extract/prefetch.py); ON only after it is measured not to lower recall
     verify_tests_enabled: bool = True    # each test candidate is put to the page as a yes / no question and the model's probability of yes is kept (extract/verify.py)
     verify_low_p: float = 0.30           # ASSUMPTION (owner sets): below this the test is flagged "check this first". MEASURED on 64 placed tests of 17 pages: all 7 wrong ones were below 0.30, so were 12 of 57 right ones; none of the 45 at or above 0.30 was wrong

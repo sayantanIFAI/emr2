@@ -26,7 +26,7 @@ def test_the_schema_asks_only_for_what_mlp1_needs(doc):
             "diagnoses", "extracted_at_confidence"} <= set(p)
     assert set(p["patient"]["properties"]) <= {"name", "age_text", "sex", "dob", "phone", "address", "evidence"}
     assert {"name", "age_text", "sex"} <= set(p["patient"]["properties"])
-    assert set(p["prescriber"]["properties"]) == {"name", "department", "designation", "clinic"}   # clinic = the organisation; the compact answer has no evidence lists
+    assert set(p["prescriber"]["properties"]) == {"name", "department", "designation", "clinic", "evidence"}   # clinic = the organisation
     assert "earlier_entries" in p and "encounter_date" in p                                                   # the dated entries of a page
 
 
@@ -95,12 +95,13 @@ def test_plain_strings_where_the_schema_wants_entry_objects_are_repaired_so_the_
     assert repair_payload({"diagnoses": ["", "  "]}, schema)["diagnoses"] == ["", "  "]      # an empty string is not made into an entry
 
 
-def test_the_compact_answer_has_no_evidence_lists_and_the_off_switch_brings_them_back(monkeypatch):
+def test_the_compact_answer_has_no_evidence_lists_and_off_keeps_them(monkeypatch):
     import json
 
     from cdi_adapter.config import settings
     from cdi_adapter.extract import prompt as P
 
+    monkeypatch.setattr(settings, "extract_compact_answer", True)
     _id, schema = P.load_schema("prescription")
     assert '"evidence"' not in json.dumps(schema)
     assert schema["properties"]["investigations"]["items"]["properties"] == {"text": {"type": ["string", "null"]}}
