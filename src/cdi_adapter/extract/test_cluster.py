@@ -69,7 +69,7 @@ def placed_text(gram: str) -> str | None:
         if hit:
             return hit.alias.capitalize()
         # a "?" at the edge of a word is most often the tick-box or bullet before the name misread ("?Lipid Profile", "?HBsAg"), not a letter
-        edge = " ".join(w.strip("?") for w in gram.split())
+        edge = " ".join(w for w in (x.strip("?") for x in gram.split()) if w)
         return placed_text(edge) if edge != gram and "?" not in edge else None
     rz = lab_resolve.resolve(gram)
     return gram if rz is not None and not getattr(rz, "fuzzy", False) else None
