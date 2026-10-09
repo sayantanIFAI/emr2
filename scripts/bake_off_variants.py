@@ -29,7 +29,7 @@ import requests
 from PIL import Image, ImageDraw, ImageFont
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from bake_off import _alnum, _group, _rows, _setup, doctor_vocab, vocab_for  # noqa: E402
+from bake_common import _alnum, _group, _rows, _setup, doctor_vocab, vocab_for  # noqa: E402
 from cdi_adapter.recognition.bench_htr import _norm  # noqa: E402
 from cdi_adapter.recognition.engines import QWEN_LINE_PROMPT, clean_line  # noqa: E402
 

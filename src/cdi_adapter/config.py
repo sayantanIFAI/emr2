@@ -335,6 +335,10 @@ class Settings(BaseSettings):
     # a second, focused look at the page for tests written WITH the follow-up instruction ("review after 2 wks {HbA1c / FBS
     # / TSH}"): the full-page answer often misses them. One short extra call, only when a follow-up is written.
     followup_second_look: bool = True
+    lab_tests_only: bool = True          # imaging, ECG / EEG and physiotherapy entries are not listed as laboratory tests (extract/not_lab.py); OFF lists them as investigations
+    recall_reroute: bool = True          # a page typed other / operative_note / lab_report whose own text holds ordered tests is handled as a prescription (extract/recall.py)
+    verify_tests_enabled: bool = True    # each test candidate is put to the page as a yes / no question and the model's probability of yes is kept (extract/verify.py)
+    verify_low_p: float = 0.30           # ASSUMPTION (owner sets): below this the test is flagged "check this first". MEASURED on 64 placed tests of 17 pages: all 7 wrong ones were below 0.30, so were 12 of 57 right ones; none of the 45 at or above 0.30 was wrong
     marks_enabled: bool = False          # pen marks on a pre-printed list of tests (extract/marks.py). OFF: MEASURED on one real page it credited a whole
                                          # printed line as marked, missed a tick and took a handwritten result value for a mark; turn on only after it is
                                          # measured on labelled pages

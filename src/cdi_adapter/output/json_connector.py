@@ -35,9 +35,11 @@ from typing import Any, Protocol
 from sqlalchemy import text
 
 from .. import repo
+from ..config import settings
 from ..db import session_scope
 from ..extract import fields as F
 from ..extract import indian_codes, lab_resolve
+from ..extract import not_lab as _not_lab
 from ..extract.indian_codes import norm as _norm_name
 from ..extract.medicine_lexicon import medicine_match
 from ..terminology.service import licensed_only
@@ -274,8 +276,25 @@ def build_result(inp: ResultInputs) -> dict[str, Any]:
     facts_by_id = {str(f.get("id")): f for f in inp.facts}
     second_look = {_norm_name(x) for x in payload.get("_second_look") or [] if isinstance(x, str)}
     text_scan = {_norm_name(k): v for k, v in (payload.get("_text_scan") or {}).items() if isinstance(k, str) and isinstance(v, str)}
+    not_lab = {_norm_name(k): v for k, v in (payload.get("_not_lab") or {}).items() if isinstance(k, str) and isinstance(v, str)}
+    verified = {_norm_name(k): float(v) for k, v in (payload.get("_verify") or {}).items() if isinstance(k, str) and isinstance(v, (int, float))}
     for t in buckets["lab_tests"]:
         key = t["as_written"]
+        why_not = not_lab.get(_norm_name(key)) or _not_lab.entry_reason(key, lab_only=settings.lab_tests_only) or _not_lab.line_reason(
+            key, inp.blocks, lab_only=settings.lab_tests_only)          # also the tests the model filed under advice or that a second look added
+        pv = verified.get(_norm_name(key))
+        if pv is not None and t.get("status") != "rejected":
+            t["confidence"] = round(pv, 3)                 # the model's own probability that this test is written here as an order; it never accepts a test
+            if pv < settings.verify_low_p:
+                t["status"] = "needs_check"
+                t["reason"] = (f"the model doubts this is written on the page (probability {pv:.2f}): check it first"
+                               + (f"; {t['reason']}" if t.get("reason") else ""))
+        if why_not and t.get("status") != "rejected":
+            t["status"] = "rejected"                       # kept, not shown as a test: imaging / ECG / physiotherapy / a service list / a medicine line
+            t["reason"] = "not a laboratory test: " + why_not
+            t["gate_recognised"] = False
+            t["context"], t["preparation"] = [], []
+            continue
         t["context"] = context.get(key, [])
         t["preparation"] = [p["text"] for p in checks["preparation"] if _applies(p, key)]
         fact = facts_by_id.get(str(t.get("fact_id")), {})

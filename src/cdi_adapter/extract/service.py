@@ -842,6 +842,20 @@ def extract_document(document_id: str, *, patient_id: str | None = None,
                 "SELECT id FROM pipeline_run WHERE document_id=:d"), {"d": document_id}
         ).mappings().all()]
 
+    rerouted_why = ""
+    if settings.recall_reroute:
+        from . import recall
+        new_type, rerouted_why = recall.reroute(cls["doc_type"], blocks)
+        if new_type:
+            # the page text holds ordered tests beside the marks of a prescription: it is handled (and recorded) as one
+            with session_scope() as sess:
+                repo.insert_doc_classification(
+                    sess, document_id=document_id, doc_type=new_type, specialty=cls.get("specialty"),
+                    is_handwritten=bool(cls.get("is_handwritten")), languages=list(cls.get("language") or ["en"]),
+                    confidence=min(float(cls.get("confidence") or 0.8), 0.8), page_spans=cls.get("page_spans") or [])
+            log.info("doc_type_rerouted", document_id=document_id, was=cls["doc_type"], now=new_type, why=rerouted_why)
+            cls = {**cls, "doc_type": new_type}
+
     loaded = load_schema(cls["doc_type"])
     if not loaded:
         with session_scope() as sess:
@@ -916,6 +930,8 @@ def extract_document(document_id: str, *, patient_id: str | None = None,
         have_names = {re.sub(r"[^a-z0-9]", "", n.casefold()) for n in names}
         listed_entries: list[tuple[str, str, bool]] = []
         for src in [fu_text, *[_coded_text(a)[0] for a in payload.get("advice") or []]]:
+            if src and looks_like_medicine(src):
+                continue                       # a medicine order ("Tab Zincovit 1 tab ...") is not a list of tests
             for name, as_read, placed in test_cluster.list_entries(src):
                 key = re.sub(r"[^a-z0-9]", "", name.casefold())
                 if key in have_names:
@@ -935,6 +951,16 @@ def extract_document(document_id: str, *, patient_id: str | None = None,
             names += extra
         if listed_entries:                  # after the second look has added its own: "BJS CT" beside BJS and CT says nothing more
             payload["investigations"] = test_cluster.drop_composites(payload.get("investigations") or [], listed_entries)
+        # imaging / ECG / physiotherapy, a clinic's printed list of services and the words of a medicine line are not laboratory tests:
+        # they stay in the result as rejected with the reason, and are not put to the choose-from-list step
+        from . import not_lab
+        payload["_not_lab"] = not_lab.classify(names, blocks, lab_only=settings.lab_tests_only)
+        if rerouted_why:
+            payload["_rerouted"] = rerouted_why
+        names = [n for n in names if n not in payload["_not_lab"]]
+        if settings.verify_tests_enabled and names:
+            from . import verify
+            payload["_verify"] = verify.verify_tests([image], names[:40])      # {name: the model's probability that it is written here as an order}
         payload["_test_resolved"] = resolve_llm.resolve_tests(client, image, names)
         # the same for medicines: a name close to reference medicine names is a CHOICE among them, never free text
         meds = [(_coded_text(m)[0] if not isinstance(m, dict) else (m.get("drug_text") or m.get("text") or m.get("name") or ""))
