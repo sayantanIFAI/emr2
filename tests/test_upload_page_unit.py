@@ -68,7 +68,7 @@ def test_every_group_prescription_and_section_is_collapsible():
 # ---- 5. autocomplete on the mobile number, no dropdown of patients
 def test_patients_are_found_by_typing_not_by_a_dropdown():
     assert 'id="psearch"' in ADMIN_PAGE and 'role="combobox"' in ADMIN_PAGE and "api/intake/search" in ADMIN_PAGE
-    assert "<select" not in ADMIN_PAGE                                                        # no dropdown of thousands
+    assert ADMIN_PAGE.count("<select") == 1 and 'id="dept"' in ADMIN_PAGE      # the one list is the 16 departments                                                      # no dropdown of thousands
 
 
 # ---- 6 / 7 / 8. organisation section, standard names, the mapping table on the screen
