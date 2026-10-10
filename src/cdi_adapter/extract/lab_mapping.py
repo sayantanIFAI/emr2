@@ -251,6 +251,9 @@ SEED: list[tuple[str, str, str | None, str]] = [
     ("electrocardiogram", "ECG", None, ""),
     # the owner's investigations: EEG, MRI, CT, USG, echo and X-ray are tests of this system (printed on the pad's checklist, MEASURED on a real Sonoscan page:
     # "EEG" and "MRI Scan of Brain" struck through; "2D echo" missed on another day)
+    ("ige", "Total IgE (immunoglobulin E)", None, ""),
+    ("total ige", "Total IgE (immunoglobulin E)", None, ""),
+    ("serum ige", "Total IgE (immunoglobulin E)", None, ""),
     ("eeg", "EEG", None, "electroencephalogram"),
     ("electroencephalogram", "EEG", None, ""),
     ("2d echo", "2D Echo", None, "echocardiography"),

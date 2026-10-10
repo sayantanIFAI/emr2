@@ -1095,6 +1095,15 @@ def extract_document(document_id: str, *, patient_id: str | None = None,
             payload["_text_scan"][mate] = why
             payload["_corroborated"] = sorted({*payload.get("_corroborated", []), mate})
             names.append(mate)
+        if settings.test_box_reread:
+            try:
+                from . import test_box
+                tbx = steps.run("test_box", test_box.reread, client, image, focus_blocks, payload)
+            except Exception as exc:  # noqa: BLE001 - an extra: never cost the document
+                tbx = None
+                log.warning("test_box_failed", document_id=document_id, error=str(exc)[:160])
+            if tbx:
+                names = [one for io in payload.get("investigations") or [] for one in split_tests(_coded_text(io)[0])]
         if settings.checklist_marks_enabled:
             # a PRINTED CHECKLIST (a menu of tests the doctor strikes / ticks / circles): looked for in the text lines first, and only a page that has such a menu
             # is looked at for pen marks. The marked names are the orders; the unmarked names of the menu are not orders.
