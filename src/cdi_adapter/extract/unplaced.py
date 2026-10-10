@@ -30,8 +30,15 @@ SHUFFLES = 3
 MIN_VOTES = 5                    # of 9 answers
 MIN_ALIKE = 0.5                  # the readings must be at least this alike a name (letters only, same first letter) for it to be offered
 MAX_OPTIONS = 4
+MAX_DEPARTMENT = 4                # of the department's usual names added to the offer
 PLAIN = "Transcribe exactly the handwriting in this image, letter by letter, on one line."
 _HEADING = re.compile(r"(?i)^(?:adv(?:ice|ised)?|inv(?:estigations?)?|ix|rx|test(?:s)?)$")
+
+
+def _dept_typical(department: str | None) -> list[str]:
+    from . import department as _dept
+
+    return _dept.typical(department)
 
 
 def _key(s: str | None) -> str:
@@ -65,9 +72,11 @@ def _letters(s: str) -> str:
     return re.sub(r"[^a-z]", "", (s or "").casefold())
 
 
-def candidates(reads: list[str]) -> list[str]:
-    """The names (investigations and tests, long ones) most alike what the readings say, best first."""
-    from . import lab_mapping
+def candidates(reads: list[str], department: str | None = None) -> list[str]:
+    """The names (investigations and tests, long ones) most alike what the readings say, best first, then the usual investigations of the doctor's
+    department (the front desk named it, or the printed header shows it) whatever their letters: an ENT doctor's unreadable word is offered
+    "Laryngoscopy" even when no letter of it fits. They are only OFFERED; the line must still be chosen by looking."""
+    from . import department as _dept, lab_mapping
 
     best: dict[str, float] = {}
     ks = [k for k in (_letters(r) for r in reads) if len(k) >= 4]
@@ -80,7 +89,11 @@ def candidates(reads: list[str]) -> list[str]:
             r = difflib.SequenceMatcher(None, k, key).ratio()
             if r >= MIN_ALIKE and r > best.get(m.canonical, 0.0):
                 best[m.canonical] = r
-    return [c for c, _r in sorted(best.items(), key=lambda kv: -kv[1])][:MAX_OPTIONS]
+    out = [c for c, _r in sorted(best.items(), key=lambda kv: -kv[1])][:MAX_OPTIONS]
+    for name in _dept.typical(department):
+        if name not in out:
+            out.append(name)
+    return out[:MAX_OPTIONS + MAX_DEPARTMENT]
 
 
 def _block_for(text: str, blocks: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -122,7 +135,7 @@ def _qualifies(text: str, not_lab: dict[str, Any]) -> bool:
             and not looks_like_medicine(text) and text not in not_lab and not _HEADING.match(text.strip()))
 
 
-def reread(client: Any, image: bytes, blocks: list[dict[str, Any]], payload: dict[str, Any]) -> dict[str, str]:
+def reread(client: Any, image: bytes, blocks: list[dict[str, Any]], payload: dict[str, Any], department: str | None = None) -> dict[str, str]:
     """``{as written: the name chosen}``; the entries are changed in ``payload["investigations"]``."""
     if not settings.unplaced_choice:
         return {}
@@ -150,7 +163,7 @@ def reread(client: Any, image: bytes, blocks: list[dict[str, Any]], payload: dic
 
         with ThreadPoolExecutor(max_workers=len(crops)) as pool:
             reads = [r for r in pool.map(plain, crops) if r]
-        options = candidates([text, *reads])
+        options = candidates([text, *reads], department)
         if len(options) < 1:
             continue
 
@@ -166,7 +179,8 @@ def reread(client: Any, image: bytes, blocks: list[dict[str, Any]], payload: dic
             name, n = ranked[0]
             chosen[text] = name
             inv[i] = {**it, "text": name, "source": "choice_vote"} if isinstance(it, dict) else {"text": name, "evidence": [], "source": "choice_vote"}
-            payload.setdefault("_text_scan", {})[name] = (f"written as '{text}' (read as {', '.join(repr(r) for r in reads[:3])}); chosen from a short list by looking at the line: "
+            payload.setdefault("_text_scan", {})[name] = (f"written as '{text}' (read as {', '.join(repr(r) for r in reads[:3])}); chosen from a short list by looking at the line"
+                                                          f"{' (a usual investigation of ' + department + ')' if department and name in _dept_typical(department) else ''}: "
                                                           f"{n} of {total} answers")
             payload["_corroborated"] = sorted({*payload.get("_corroborated", []), name})
         log.info("unplaced_choice", written=text, options=options, votes=votes)

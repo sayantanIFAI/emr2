@@ -76,3 +76,47 @@ def note(name: str | None, department: str | None) -> tuple[str, str] | None:
                 return "usual", f"usual for a {department} clinic"
             return "unusual", f"not usual for a {department} clinic (it is ordered by {', '.join(sorted(allowed))}): check it first"
     return None
+
+
+# the departments the front desk can name when uploading (value, label); a department named here is the doctor's own, for every page of the upload
+CHOICES: list[tuple[str, str]] = [
+    ("ent", "ENT"), ("cardiology", "Cardiology"), ("neurology", "Neurology"), ("orthopaedics", "Orthopaedics"), ("gynaecology", "Gynaecology"),
+    ("ophthalmology", "Ophthalmology"), ("paediatrics", "Paediatrics"), ("dental", "Dental"), ("general medicine", "General medicine"),
+    ("surgery", "Surgery"), ("endocrinology", "Endocrinology"), ("rheumatology", "Rheumatology"), ("gastroenterology", "Gastroenterology"),
+    ("pulmonology", "Pulmonology / chest"), ("urology", "Urology"), ("dermatology", "Dermatology"),
+]
+_IDS = {v for v, _l in CHOICES}
+
+# the investigations (not the everyday blood tests) a department's doctors write by hand: aliases of the lab mapping table. Used ONLY as names offered when a
+# handwritten investigation cannot be read: the line is then shown with them and the model chooses by looking, or says none (extract/unplaced.py).
+TYPICAL: dict[str, list[str]] = {
+    "ent": ["laryngoscopy", "nasal endoscopy", "audiometry", "tympanometry", "video laryngoscopy", "x ray pns", "ct pns", "ige"],
+    "cardiology": ["ecg", "2d echo", "tmt", "holter", "lipid profile"],
+    "neurology": ["eeg", "mri brain", "ct brain", "emg", "ncv"],
+    "orthopaedics": ["x ray", "mri knee", "mri spine", "mri ls spine"],
+    "gynaecology": ["usg lower abdomen", "usg abdomen", "hysteroscopy"],
+    "gastroenterology": ["endoscopy", "upper gi endoscopy", "colonoscopy", "usg whole abdomen"],
+    "pulmonology": ["spirometry", "pft", "bronchoscopy", "x ray chest pa"],
+    "urology": ["cystoscopy", "usg kub"],
+    "dental": ["opg"],
+    "paediatrics": ["x ray chest pa", "usg abdomen"],
+    "general medicine": ["ecg", "usg whole abdomen", "x ray chest pa", "2d echo"],
+}
+
+
+def normalise_hint(value: str | None) -> str | None:
+    """The department id for what the front desk chose, or None (blank, "not known" or anything not on the list)."""
+    v = re.sub(r"\s+", " ", str(value or "").strip().casefold())
+    return v if v in _IDS else None
+
+
+def typical(dept: str | None) -> list[str]:
+    """The names to offer for a department: the canonical names of its usual investigations, in the mapping table's own spelling."""
+    from . import lab_mapping
+
+    out: list[str] = []
+    for alias in TYPICAL.get(dept or "", []):
+        m = lab_mapping.lookup(alias)
+        if m and m.canonical not in out:
+            out.append(m.canonical)
+    return out

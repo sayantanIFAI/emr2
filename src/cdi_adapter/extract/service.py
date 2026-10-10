@@ -1106,8 +1106,9 @@ def extract_document(document_id: str, *, patient_id: str | None = None,
                 names = [one for io in payload.get("investigations") or [] for one in split_tests(_coded_text(io)[0])]
         if settings.unplaced_choice:
             try:
-                from . import unplaced
-                chosen = steps.run("unplaced", unplaced.reread, client, image, focus_blocks, payload)
+                from . import department as _dep, unplaced
+                _dept = _dep.detect(_dep.header_texts(page1_blocks)) or _dep.normalise_hint(doc.get("department_hint"))      # the printed header, else what the front desk named
+                chosen = steps.run("unplaced", unplaced.reread, client, image, focus_blocks, payload, _dept)
             except Exception as exc:  # noqa: BLE001 - an extra: never cost the document
                 chosen = {}
                 log.warning("unplaced_failed", document_id=document_id, error=str(exc)[:160])
@@ -1135,7 +1136,7 @@ def extract_document(document_id: str, *, patient_id: str | None = None,
         # imaging / ECG / physiotherapy, a clinic's printed list of services and the words of a medicine line are not laboratory tests:
         # they stay in the result as rejected with the reason, and are not put to the choose-from-list step
         from . import department, not_lab
-        payload["_department"] = department.detect(department.header_texts(page1_blocks))    # from the printed header only; None when it shows none
+        payload["_department"] = department.detect(department.header_texts(page1_blocks)) or department.normalise_hint(doc.get("department_hint"))    # from the printed header only; None when it shows none
         payload["_not_lab"] = not_lab.classify(names, blocks, lab_only=settings.lab_tests_only)
         if rerouted_why:
             payload["_rerouted"] = rerouted_why

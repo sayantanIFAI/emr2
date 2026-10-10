@@ -73,6 +73,7 @@ class DocProg:
     job_id: str | None = None       # the Send this document belongs to (saved with the document)
     token_no: str | None = None     # the token and mobile number typed with the upload (saved with the document)
     phone: str | None = None
+    department: str | None = None   # the department the front desk named (a prior for unreadable investigations); saved with the document
     patient_name: str | None = None  # the name read from the page, once it is read
 
     def stage(self, name: str, state: str) -> None:
@@ -153,7 +154,7 @@ def create_job(abha: str | None, files: list[tuple[str, bytes]],
                patient_ref: str | None = None, *,
                parts: list[list[tuple[str, bytes]] | None] | None = None,
                idempotency_key: str | None = None,
-               token_no: str | None = None, phone: str | None = None) -> str:
+               token_no: str | None = None, phone: str | None = None, department: str | None = None) -> str:
     jid = uuid.uuid4().hex[:12]
     if in_flight() >= settings.job_queue_max and not (idempotency_key and idempotency_key in _idem):
         raise QueueFull(f"{settings.job_queue_max} prescriptions are already being read or waiting. "
@@ -172,7 +173,7 @@ def create_job(abha: str | None, files: list[tuple[str, bytes]],
                 _idem[idempotency_key] = (now, bound)
             return bound
     try:
-        return _create_job(jid, abha, files, patient_ref, parts, token_no, phone)
+        return _create_job(jid, abha, files, patient_ref, parts, token_no, phone, department)
     except Exception:
         if idempotency_key:
             with _lock:
@@ -189,9 +190,9 @@ def create_job(abha: str | None, files: list[tuple[str, bytes]],
 def _create_job(jid: str, abha: str | None, files: list[tuple[str, bytes]],
                 patient_ref: str | None,
                 parts: list[list[tuple[str, bytes]] | None] | None,
-                token_no: str | None = None, phone: str | None = None) -> str:
+                token_no: str | None = None, phone: str | None = None, department: str | None = None) -> str:
     job = Job(id=jid, abha=(abha or "").strip() or None, token_no=token_no, phone=phone)
-    job.docs = [DocProg(filename=fn, parts=(parts[i] if parts else None), job_id=jid, token_no=token_no, phone=phone)
+    job.docs = [DocProg(filename=fn, parts=(parts[i] if parts else None), job_id=jid, token_no=token_no, phone=phone, department=department)
                 for i, (fn, _) in enumerate(files)]
 
     ref = (patient_ref or "").strip()
@@ -290,14 +291,14 @@ def _durable_key(key: str, jid: str) -> str:
         return jid
 
 
-def _tag_document(document_id: str, job_id: str | None, token_no: str | None = None, phone: str | None = None) -> None:
+def _tag_document(document_id: str, job_id: str | None, token_no: str | None = None, phone: str | None = None, department: str | None = None) -> None:
     if not job_id:
         return
     try:
         with session_scope() as sess:
             sess.execute(text("UPDATE source_document SET upload_job_id = :j, token_no = coalesce(:t, token_no), "
-                              "phone = coalesce(:p, phone) WHERE id = :d"),
-                         {"j": job_id, "d": document_id, "t": token_no, "p": phone})
+                              "phone = coalesce(:p, phone), department_hint = coalesce(:dep, department_hint) WHERE id = :d"),
+                         {"j": job_id, "d": document_id, "t": token_no, "p": phone, "dep": department})
     except Exception as exc:  # noqa: BLE001
         log.warning("job_tag_failed", document_id=document_id, error=str(exc)[:150])
 
@@ -311,7 +312,7 @@ def _stage1(prog: DocProg, fn: str, raw: bytes, abha: str | None) -> None:
         scope = f"{prog.phone}|{prog.token_no}" if prog.phone and prog.token_no else None      # the same photo for another patient is another document
         res = ingest_bytes(raw, filename=fn, source_channel="webapp", legacy_patient_ref=abha, dedupe_scope=scope)
         prog.document_id = res.document_id
-        _tag_document(res.document_id, prog.job_id, prog.token_no, prog.phone)
+        _tag_document(res.document_id, prog.job_id, prog.token_no, prog.phone, prog.department)
         if prog.parts and not res.deduplicated:
             # one prescription built from several pictures: keep each original untouched
             from .upload import store_parts

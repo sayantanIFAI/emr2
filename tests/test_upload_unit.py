@@ -43,7 +43,7 @@ def client(monkeypatch):
     """The real app with job creation replaced, so nothing touches a database."""
     calls: list[dict] = []
 
-    def fake_create_job(abha, files, patient_ref=None, *, parts=None, idempotency_key=None, token_no=None, phone=None):
+    def fake_create_job(abha, files, patient_ref=None, *, parts=None, idempotency_key=None, token_no=None, phone=None, department=None):
         calls.append({"abha": abha, "files": files, "patient_ref": patient_ref, "parts": parts,
                       "key": idempotency_key, "token_no": token_no, "phone": phone})
         return "job123"

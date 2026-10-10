@@ -59,3 +59,23 @@ def test_an_unreadable_investigation_is_taken_only_when_most_answers_pick_the_sa
     assert "chosen from a short list" in p["_text_scan"]["Laryngoscopy"]
     q = {"investigations": [{"text": "Lang?erseid?"}]}
     assert U.reread(Chooser("none of these"), IMAGE, BLOCKS, q) == {} and q["investigations"][0]["text"] == "Lang?erseid?"       # nothing settles: left as it was
+
+
+def test_an_ent_doctors_unreadable_word_is_offered_laryngoscopy_whatever_its_letters():
+    # the doctor is ENT: the usual ENT investigations are offered even when no letter of the reading fits (the model chooses by looking, or says none)
+    assert "Laryngoscopy" in U.candidates(["Qzxv blah"], "ent")
+    assert U.candidates(["Qzxv blah"], None) == []
+    assert "Colonoscopy" not in U.candidates(["Qzxv blah"], "ent")
+
+
+def test_the_department_the_front_desk_names_is_one_of_the_list_or_nothing():
+    from cdi_adapter.extract import department as D
+
+    assert D.normalise_hint("ENT") == "ent" and D.normalise_hint(" General  Medicine ") == "general medicine"
+    assert D.normalise_hint("") is None and D.normalise_hint("not known") is None and D.normalise_hint("x; drop table") is None
+
+
+def test_the_upload_page_asks_for_the_department_and_sends_it():
+    from cdi_adapter.webapp.upload_page import ADMIN_PAGE
+
+    assert 'id="dept"' in ADMIN_PAGE and '<option value="ent">ENT</option>' in ADMIN_PAGE and 'fd.append("department",dept)' in ADMIN_PAGE

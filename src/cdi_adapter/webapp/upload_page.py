@@ -112,6 +112,8 @@ details.sec>summary{font-weight:650;font-size:15px;min-height:40px}
           role="combobox" aria-expanded="false" aria-controls="phone-sugg" aria-autocomplete="list" aria-describedby="pt-err"/>
         <ul id="phone-sugg" role="listbox" aria-label="Patients with this mobile number" hidden></ul></div>
     </div>
+    <div class="fld" style="max-width:360px"><label for="dept">Doctor's department <span class="hint">(optional: helps read a hard investigation name)</span></label>
+      <select id="dept"><option value="">not known</option><option value="ent">ENT</option><option value="cardiology">Cardiology</option><option value="neurology">Neurology</option><option value="orthopaedics">Orthopaedics</option><option value="gynaecology">Gynaecology</option><option value="ophthalmology">Ophthalmology</option><option value="paediatrics">Paediatrics</option><option value="dental">Dental</option><option value="general medicine">General medicine</option><option value="surgery">Surgery</option><option value="endocrinology">Endocrinology</option><option value="rheumatology">Rheumatology</option><option value="gastroenterology">Gastroenterology</option><option value="pulmonology">Pulmonology / chest</option><option value="urology">Urology</option><option value="dermatology">Dermatology</option></select></div>
     <div class="fielderr" id="pt-err" role="alert"></div>
     <div class="notice-warn" id="existing" hidden aria-live="polite">
       <div id="existing-msg"></div>
@@ -517,6 +519,7 @@ $("#go").onclick=async()=>{
   const sent=PAGES.slice();
   const fd=new FormData();
   fd.append("token_no",token); fd.append("phone",phone);
+  const dept=$("#dept").value; if(dept){ fd.append("department",dept); try{ localStorage.setItem("cdi_dept",dept); }catch(e){} }
   fd.append("grouping",sent.length>1&&document.querySelector('input[name=grp]:checked').value==="one_document"?"one_document":"separate");
   for(const p of sent) fd.append("files",p.file,p.file.name);
   SEND_KEY=SEND_KEY||newKey();                       // the same Send retried = the same job

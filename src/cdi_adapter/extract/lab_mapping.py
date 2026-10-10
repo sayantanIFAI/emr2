@@ -280,6 +280,8 @@ SEED: list[tuple[str, str, str | None, str]] = [
     ("emg", "EMG", None, ""),
     ("ncv", "Nerve conduction velocity (NCV)", None, ""),
     ("fnac", "FNAC", None, ""),
+    ("x ray pns", "X-ray PNS", None, ""),
+    ("ct pns", "CT PNS", None, ""),
     ("eeg", "EEG", None, "electroencephalogram"),
     ("electroencephalogram", "EEG", None, ""),
     ("2d echo", "2D Echo", None, "echocardiography"),

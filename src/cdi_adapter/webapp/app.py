@@ -267,6 +267,7 @@ async def submit_job(
     patient_ref: str | None = Form(default=None),
     token_no: str | None = Form(default=None),
     phone: str | None = Form(default=None),
+    department: str | None = Form(default=None),
     grouping: str = Form(default="separate"),
     files: list[UploadFile] = File(...),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
@@ -306,7 +307,8 @@ async def submit_job(
     from .jobs import QueueFull
     try:
         jid = create_job(abha_n, [(i.name, i.data) for i in items], patient_ref=ref,
-                         parts=[i.parts for i in items], idempotency_key=key or None, token_no=token, phone=mobile)
+                         parts=[i.parts for i in items], idempotency_key=key or None, token_no=token, phone=mobile,
+                         department=_dept_hint(department))
     except QueueFull as exc:                           # 10 prescriptions are in flight: a plain "wait a minute", not an error page
         raise HTTPException(429, str(exc)) from exc
     return {"job_id": jid, "documents": len(items)}
@@ -537,3 +539,9 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+def _dept_hint(value: str | None) -> str | None:
+    from ..extract import department as _department
+
+    return _department.normalise_hint(value)
