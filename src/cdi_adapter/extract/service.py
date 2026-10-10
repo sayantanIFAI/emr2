@@ -213,9 +213,13 @@ def _facts_prescription(c: _Ctx, p: dict[str, Any]) -> None:
         _add_medication(c, m, intent="order",
                         status=m.get("status") if isinstance(m, dict) else None)
     seen_tests: set[str] = set()                                # a test is listed once, however many views / lines found it
+    covered = {str(x).strip() for x in p.get("_covered") or []}   # entries that only repeated tests already listed on their own ("Br Av TSH FT4")
     for a in p.get("advice") or []:
         t, ev = _coded_text(a)
         if not t:
+            continue
+        if t.strip() in covered:
+            c.add(fact_type="advice", local_text=t, value_text=t, evidence=ev)      # kept as written, never as a test
             continue
         if _misfiled_medicine(t):
             continue                       # a medicine in the advice list: medicines are not extracted in this profile

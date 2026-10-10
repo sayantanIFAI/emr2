@@ -79,3 +79,24 @@ def test_the_upload_page_asks_for_the_department_and_sends_it():
     from cdi_adapter.webapp.upload_page import ADMIN_PAGE
 
     assert 'id="dept"' in ADMIN_PAGE and '<option value="ent">ENT</option>' in ADMIN_PAGE and 'fd.append("department",dept)' in ADMIN_PAGE
+
+
+def test_a_covered_entry_in_the_advice_list_is_not_made_a_test_again():
+    from cdi_adapter.extract import service as X
+
+    class Ctx:
+        def __init__(self):
+            self.added, self.med_resolved = [], {}
+
+        def add(self, **kw):
+            self.added.append(kw)
+            return "id"
+
+    payload = {"advice": [{"text": "Br Av TSH FT4"}], "investigations": [{"text": "TSH", "source": "list_context"}, {"text": "FT4", "source": "list_context"}]}
+    before, after = Ctx(), Ctx()
+    X._facts_prescription(before, payload)
+    X._facts_prescription(after, {**payload, "_covered": ["Br Av TSH FT4"]})
+    assert ("investigation_order", "Br Av TSH FT4") in [(a["fact_type"], a["local_text"]) for a in before.added]       # why the guard exists
+    kinds = [(a["fact_type"], a["local_text"]) for a in after.added]
+    assert ("advice", "Br Av TSH FT4") in kinds and ("investigation_order", "Br Av TSH FT4") not in kinds
+    assert ("investigation_order", "TSH") in kinds and ("investigation_order", "FT4") in kinds
