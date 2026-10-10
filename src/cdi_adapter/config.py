@@ -320,7 +320,9 @@ class Settings(BaseSettings):
     # a second, focused look at the page for tests written WITH the follow-up instruction ("review after 2 wks {HbA1c / FBS
     # / TSH}"): the full-page answer often misses them. One short extra call, only when a follow-up is written.
     followup_second_look: bool = True
-    lab_tests_only: bool = True          # imaging, ECG / EEG and physiotherapy entries are not listed as laboratory tests (extract/not_lab.py); OFF lists them as investigations
+    lab_tests_only: bool = False         # OWNER'S DECISION (2026-10): MRI, CT, USG, echo, EEG, ECG, X-ray and OPG are tests of this system and are listed. ON would reject imaging / ECG / EEG entries
+                                         # the lab lists do not place (extract/not_lab.py); physiotherapy, results ("MRI Brain - N") and a printed list of services stay rejected either way
+    checklist_marks_enabled: bool = True # a PRINTED CHECKLIST page (a menu of tests the doctor strikes, ticks or circles) is read for pen marks, only when the page's text shows such a menu (extract/checklist.py)
     recall_reroute: bool = True          # a page typed other / operative_note / lab_report whose own text holds ordered tests is handled as a prescription (extract/recall.py)
     extract_compact_answer: bool = False  # OFF: MEASURED on 17 pages it saved 0.3 s and recall fell 81% -> 73% in one run (not settled: run-to-run noise is about 3 points). The main page answer leaves out the evidence lists and the empty system / code fields; the program links the OCR blocks afterwards (extract/evidence.py): fewer tokens written
     skip_second_look_when_agree: bool = False   # OFF: MEASURED no time saved (15.3 s with and without): the text and the answer rarely name exactly the same tests. The enlarged second look is skipped when the page text scan and the main answer already name the same tests

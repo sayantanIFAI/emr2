@@ -6,13 +6,13 @@ def B(*texts):
 
 
 def test_entry_reasons():
-    assert N.entry_reason("MRI LS spine").startswith("imaging")                  # the lists do not place it
+    assert N.entry_reason("DEXA scan").startswith("imaging")                    # the lists do not place it (MRI, CT, USG, echo, EEG, X-ray are placed: the owner counts them as tests)
     assert N.entry_reason("OPG") is None and N.entry_reason("Digital OPG") is None    # the mapping table places it: a test the gate knows
     assert N.entry_reason("ECG") is None and N.entry_reason("Chest ECG") is None
     assert N.entry_reason("Ph") and N.entry_reason("Ph.:") and N.entry_reason("Phone")    # a printed phone label (MEASURED: "pH of Blood" on a letterhead)
     assert N.entry_reason("Physio - UST (IFT)").startswith("physiotherapy")
     assert N.entry_reason("CBC") is None and N.entry_reason("CT") is None and N.entry_reason("FBS") is None
-    assert N.entry_reason("MRI LS spine", lab_only=False) is None          # a site that wants imaging listed switches the rule off
+    assert N.entry_reason("DEXA scan", lab_only=False) is None          # a site that wants imaging listed switches the rule off
 
 
 def test_line_context_physio_and_footer_and_medicine():

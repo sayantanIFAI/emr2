@@ -416,6 +416,9 @@ def build_result(inp: ResultInputs) -> dict[str, Any]:
     items = [i for lst in (*buckets.values(), other) for i in lst]
     from ..extract import unread
     unread_flags = unread.flags(inp.blocks)                       # a handwritten line nobody could read, where orders are written
+    cl = payload.get("_checklist") if isinstance(payload.get("_checklist"), dict) else None
+    if cl and cl.get("rows") and not cl.get("marked"):            # a printed menu of tests and no pen mark found on it: said, never left silent
+        unread_flags.append({"code": "printed_checklist_no_mark", "line": 0, "text": "a printed checklist of tests is on this page and no pen mark was found on it: please look"})
     name_v = _patient_name(doc, checks["patient"]["name"])
     n_check = sum(1 for i in items if i["status"] == "needs_check") + len(checks["review"])
     if name_v["status"] == "needs_check" and checks["patient"]["name"]["status"] != "needs_check":
@@ -461,7 +464,7 @@ def build_result(inp: ResultInputs) -> dict[str, Any]:
         "patient": {**{k: _v(p[k]) for k in ("name", "age_text", "dob", "sex", "mrn", "phone", "address", "abha_id")},
                     "name": name_v,
                     # the mobile number typed at upload; never a number read from the page
-                    "phone": (value(str(doc["phone"]).strip(), "checked", "typed at upload") if (doc.get("phone") or "").strip() else F.absent())},
+                    "phone": (value(str(doc["phone"]).strip(), "checked", "typed at upload") if (doc.get("phone") or "").strip() else _v(F.absent()))},
         "doctor": {**{k: _v(d[k]) for k in ("name", "reg_no", "department", "designation", "qualification")},
                    "clinic": {k: _v(d["clinic"][k]) for k in ("name", "address", "phone")},
                    "stamp_present": _v(d["stamp_present"]), "signature_present": _v(d["signature_present"])},

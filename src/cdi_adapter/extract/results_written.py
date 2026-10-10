@@ -30,7 +30,9 @@ _BARE = re.compile(r"(?P<w>ft3|ft4|t3|t4|b12|hba1c|hbaic|hba1|[A-Za-z]+)" + r"\s
 # NAME +ve / -ve / positive / negative / normal / WNL / reactive / nil
 _WORD = re.compile(r"(?P<w>[A-Za-z][A-Za-z0-9+./]{0,15})\s*[-–:=]?\s*\(?\s*(?:\+\s*ve|[-–]\s*ve|positive|negative|reactive|non[- ]?reactive|normal|wnl|nad|"
                    r"not\s+detected|detected|nil)\b", re.I)
-_TRIMS = " \t,;:|/·."
+# NAME - N / NAME: N : the single letter N after a dash or colon is "normal" (MEASURED on a real page: "MRI Brain - N", "EEG: N")
+_NORMAL_N = re.compile(r"(?P<w>[A-Za-z][A-Za-z0-9+./ ]{0,24}?)\s*[-–:=]\s*N(?![A-Za-z0-9])")
+_TRIMS =" \t,;:|/·."
 
 
 def _analyte_like(w: str) -> bool:
@@ -55,6 +57,9 @@ def _spans(text: str) -> list[tuple[int, int, str]]:
             out.append((m.start(), m.end(), m.group("w")))
     for m in _WORD.finditer(text):
         if not any(s <= m.start() < e for s, e, _ in out) and _analyte_like(m.group("w")):
+            out.append((m.start(), m.end(), m.group("w")))
+    for m in _NORMAL_N.finditer(text):
+        if not any(s0 <= m.start() < e0 for s0, e0, _ in out) and any(_analyte_like(x) for x in m.group("w").split()):
             out.append((m.start(), m.end(), m.group("w")))
     return sorted(out)
 
