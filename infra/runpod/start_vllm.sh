@@ -3,13 +3,15 @@
 #
 #   bash /workspace/cdi/infra/runpod/start_vllm.sh
 #
-# Runs in ITS OWN venv (/workspace/vllm-venv) so vLLM's torch/deps never touch
-# the app venv. The mlserve `hf` backend must be stopped first - only one process
+# Runs in ITS OWN venv (default /opt/vllm-venv, on the pod's fast local disk) so vLLM's torch/deps never touch
+# the app venv. The venv is also kept as ONE file on /workspace (vllm-venv.tar): a restart unpacks it in about a minute instead of
+# installing it again (thousands of small files are very slow to write to a network volume: MEASURED 25+ minutes without finishing). The mlserve `hf` backend must be stopped first - only one process
 # can hold the model. Rollback = stop this, set CDI_MLSERVE_BACKEND=hf, restart
 # mlserve.
 set -uo pipefail
 
-VENV=/workspace/vllm-venv
+VENV="${CDI_VLLM_VENV:-/opt/vllm-venv}"
+PACK="${CDI_VLLM_VENV_PACK:-/workspace/vllm-venv.tar}"
 LOG=/workspace/logs/vllm.log
 PORT="${CDI_VLLM_PORT:-8078}"
 MODEL="${CDI_VLM_MODEL_ID:-Qwen/Qwen2.5-VL-7B-Instruct}"
@@ -48,9 +50,14 @@ if [ -x "$VENV/bin/vllm" ] && ! "$VENV/bin/python" -c "import torch,sys; sys.exi
   echo "the vLLM venv's torch cannot use this GPU (driver too old for it): rebuilding the venv"
   rm -rf "$VENV"
 fi
+if [ ! -x "$VENV/bin/vllm" ] && [ -s "$PACK" ]; then
+  echo "restoring the vLLM venv from $PACK"
+  mkdir -p "$(dirname "$VENV")"
+  tar -xf "$PACK" -C "$(dirname "$VENV")" || rm -rf "$VENV"
+fi
 if [ ! -x "$VENV/bin/vllm" ]; then
-  export TMPDIR=/workspace/tmp PIP_CACHE_DIR=/workspace/tmp/pipcache
-  mkdir -p "$TMPDIR"
+  export TMPDIR=/tmp/vllm-tmp PIP_CACHE_DIR=/tmp/vllm-tmp/pipcache      # local disk: fast
+  mkdir -p "$TMPDIR" "$(dirname "$VENV")"
   python3 -m venv "$VENV"          # NOT --system-site-packages: vLLM brings its own torch
   "$VENV/bin/pip" install -U pip wheel
   "$VENV/bin/pip" install "$PIN"   # pulls its own pinned torch + CUDA libs
@@ -58,6 +65,10 @@ if [ ! -x "$VENV/bin/vllm" ]; then
   case "$PIN" in vllm==0.1[0-9].*) "$VENV/bin/pip" install "transformers>=4.56,<5" ;; esac
 fi
 "$VENV/bin/vllm" --version || { echo "vLLM install failed"; exit 1; }
+if [ ! -s "$PACK" ] && mountpoint -q "$(dirname "$PACK")" 2>/dev/null; then
+  # one big file on the volume (sequential write), made in the background while the model loads
+  ( tar -cf "$PACK.part" -C "$(dirname "$VENV")" "$(basename "$VENV")" && mv -f "$PACK.part" "$PACK" && echo "vLLM venv packed: $PACK" >> "$LOG.pack" ) > /dev/null 2>&1 &
+fi
 
 echo "########## 2. serve $MODEL on :$PORT ##########"
 pkill -f "vllm serve" 2>/dev/null || true
