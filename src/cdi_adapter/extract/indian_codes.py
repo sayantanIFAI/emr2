@@ -16,6 +16,7 @@ from __future__ import annotations
 import difflib
 import json
 import re
+import unicodedata
 import threading
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -33,7 +34,8 @@ _GENERIC_WORDS = frozenset("test tests level levels total quantitative qualitati
 
 
 def norm(s: str | None) -> str:
-    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", (s or "").casefold())).strip()
+    # superscript / subscript digits and signs ("Ca²⁺", "D₃") are their plain forms: the model writes them that way
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", unicodedata.normalize("NFKC", s or "").casefold())).strip()
 
 
 def _dir(path: str | None = None) -> Path | None:

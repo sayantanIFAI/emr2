@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import difflib
 import re
+import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
@@ -147,7 +148,8 @@ def _crops(image: bytes, box: tuple[int, int, int, int]) -> list[bytes]:
 def _names(text: str) -> set[str]:
     """The tests the lab lists place in a reading of a box ("TSH, FT4, CBC, ESR\\nIgE, RBS, CRP"); a name one confusable letter from one counts."""
     found: set[str] = set()
-    for piece in split_tests(re.sub(r"[\r\n]+", ", ", text or "")):
+    text = unicodedata.normalize("NFKC", text or "")             # superscript / subscript forms ("Ca²⁺", "D₃") are "Ca2+" and "D3"
+    for piece in split_tests(re.sub(r"[\r\n]+", ", ", text)):
         piece = piece.strip(" .,;:-")
         got = placed_text(piece) if len(re.findall(r"[A-Za-z]", piece)) >= 2 else None
         got = got or near_miss(piece)
@@ -157,7 +159,7 @@ def _names(text: str) -> set[str]:
 
 
 def _tokens(text: str) -> list[str]:
-    return [t.casefold() for t in re.findall(r"[A-Za-z0-9]{2,}", text or "")]
+    return [t.casefold() for t in re.findall(r"[A-Za-z0-9]{2,}", unicodedata.normalize("NFKC", text or ""))]
 
 
 def _distance(a: str, b: str) -> int:

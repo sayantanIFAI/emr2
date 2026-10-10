@@ -62,6 +62,9 @@ class Found:
 def placed_text(gram: str) -> str | None:
     """The name to list when the lab lists place these words EXACTLY (the mapping table, the national list, the gazetteer), or when
     a reading with ``?`` for unreadable letters fits exactly one standard test; otherwise None. A fuzzy match never counts."""
+    import unicodedata
+
+    gram = unicodedata.normalize("NFKC", gram)                       # "Ca²⁺" is "Ca2+"
     if sum(ch.isalpha() for ch in gram) < 2:
         return None
     if "?" in gram:

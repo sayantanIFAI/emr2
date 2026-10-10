@@ -118,3 +118,12 @@ def test_a_tick_joined_to_the_first_letter_and_a_superscript_lost_are_read_from_
     assert info and {"Calcium", "Ca2+"} & set(info["accepted"]) and any("USG" in a for a in info["accepted"]) and any("Uric" in a for a in info["accepted"])
     assert not any("VSGT" in t or "B/F" in t for t in texts)                                # the misread pieces are gone
     assert any("Ca2" in t or "Calcium" in t for t in texts) and any("USG" in t for t in texts) and any("Vit D3" in t for t in texts)
+
+
+def test_superscript_and_subscript_forms_are_the_plain_test_names():
+    # MEASURED: the enlarged box was read "Ca²⁺" and "Vit D₃"; neither was placed
+    assert T._names("USG (whole Abdomen)\nB/F → Ca²⁺,\nVit D₃, Uric acid") >= {"Uric acid"}
+    names = {n.casefold() for n in T._names("Ca²⁺, Vit D₃")}
+    assert any(n.startswith("ca2") for n in names) and any(n.startswith("vit d3") for n in names)
+    from cdi_adapter.extract.test_cluster import placed_text
+    assert placed_text("Ca²⁺") is not None and placed_text("Vit D₃") is not None
