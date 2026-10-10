@@ -33,12 +33,12 @@ records into a structured EMR and **ABDM/ABHA FHIR R4** record bundles.
   > fresh schema dump. Treat it as **MEASURED-but-not-current**, and re-run a
   > schema/endpoint reconciliation pass the next time the pod is live.
 - **Update note 2 (2026-09-29) — recognition architecture frozen, NOT built.** A
-  design review of the handwritten branch (TrOCR vs Qwen2.5-VL, Bengali + English
+  design review of the handwritten branch (the second recognizer vs Qwen2.5-VL, Bengali + English
   prescriptions, a closed ~100-doctor polyclinic) converged on a target
   recognition architecture. It is recorded in **§15** and is **design only**:
   nothing in §15 exists in code yet, and every section from §0 to §14 still describes
   the as-built system. The main decisions were:
-  (1) RapidOCR stays on printed regions; handwritten *line crops* go to **TrOCR/HTR and
+  (1) RapidOCR stays on printed regions; handwritten *line crops* go to **a second recognizer and
   Qwen2.5-VL independently**, never one prompted with the other's answer;
   (2) an **immutable 3-table evidence schema** (`ocr_observation` →
   `interpretation_candidate` → `verified_fact`) enforced at the DB level;
@@ -207,7 +207,7 @@ ingest-only API; `cdi_adapter.ingest.watcher` watches a drop folder.
 
 | S1 | Ingest & normalize | `ingest/pages.py`, `ingest/service.py` | pypdfium2 render (PDF) / Pillow (images, EXIF-upright); OpenCV deskew (min-area-rect) + denoise + CLAHE; SHA-256 dedupe (race-safe: `IntegrityError` → reuse existing row) | `source_document`, `document_page`, original+pages → MinIO |
 | S2 | Classify | `classify/service.py`, `classify/prompt.py` | **scored keyword heuristic** over the S3 OCR text (`_heuristic_classify`): a type only when it scores ≥5 *and* leads the runner-up by ≥3 on a legible page (≥180 chars, ≥75% alnum); otherwise Qwen2.5-VL, schema `classification.v1` | `doc_classification` |
-| S3 | OCR / layout | `ocr/service.py`, `ocr/rapid.py`, `ocr/vlm_ocr.py` | **runs before classify.** printed → RapidOCR (boxes+conf+reading order); a page the classifier later calls handwritten gets a second VLM-transcription pass that replaces the blocks. `ocr_document(force_engine="rapidocr"|"vlm")`. *Target (§15, not built): per-region printed/handwritten routing, TrOCR + Qwen on line crops, append-only `ocr_observation`.* | `ocr_block` |
+| S3 | OCR / layout | `ocr/service.py`, `ocr/rapid.py`, `ocr/vlm_ocr.py` | **runs before classify.** printed → RapidOCR (boxes+conf+reading order); a page the classifier later calls handwritten gets a second VLM-transcription pass that replaces the blocks. `ocr_document(force_engine="rapidocr"|"vlm")`. *Target (§15, not built): per-region printed/handwritten routing, Qwen on line crops, append-only `ocr_observation`.* | `ocr_block` |
 | S4 | Extract | `extract/service.py`, `extract/prompt.py` | Qwen2.5-VL, schema-locked JSON per `doc_type`, evidence = OCR block ids; **repair + one retry + lenient fallback** (marks `_partial`); re-extract purges the prior attempt's rows first | `extraction`, `clinical_fact` (+ `medication_detail`), `fact_provenance`, `patient_identity`, `encounter` |
 | S5 | Terminology | `terminology/service.py`, `terminology/seed.py` | curated exact + alias + `difflib` fuzzy → SNOMED CT / LOINC; UCUM unit parse; frequency parse | updates `clinical_fact.code_*`, `medication_detail` |
 | **S6** | **Validation + gate** | `validate/rules.py`, `validate/service.py` | **deterministic rules** (value ranges, unit sanity, dose/frequency ceilings, impossible dates, evidence-present, unmapped-critical, duplicate & cross-document contradiction) + confidence calibration + **routing** | `clinical_fact.review_state`, `review_note`, calibrated `confidence_overall`, `fact_conflict`, `review_task` |
@@ -1076,7 +1076,7 @@ checks must grep a content marker); `psql`/`pg_restore` need the URL with
 | Observability | ⚠️ | structlog to files; no Prometheus/Grafana/OTel |
 | HA / DR | ❌ | single pod; DB dump is the only backup |
 | AuthN/AuthZ, rate limiting, DPDP workflow | ❌ | |
-| Handwriting: second engine (TrOCR/HTR) + disagreement engine | ❌ designed (§15.3) | gated on the E2-S10 Bengali benchmark; its dataset does not exist yet |
+| Handwriting: second engine (a second recognizer) + disagreement engine | ❌ designed (§15.3) | gated on the E2-S10 Bengali benchmark; its dataset does not exist yet |
 | Line/region detection (printed / handwritten / mixed / uncertain) | ❌ designed (§15.2) | today the "handwritten" flag is per page (§5 S3 limitations) |
 | Immutable evidence schema (`ocr_observation` / `interpretation_candidate` / `verified_fact`) | ❌ designed (§15.4) | today `ocr_block` is deleted and re-inserted on the VLM pass |
 | Evidence hierarchy + resolution cascade | ❌ designed (§15.6) | — |
@@ -1108,7 +1108,7 @@ placeholder-grade:
 | 8 | **Scale** — durable queue (Temporal / tuned Celery) for web-app uploads too, separate ingest/OCR/VLM worker pools, priority + dead-letter queues, idempotency keys, autoscaling. Replaces the in-process `ThreadPool` (robustness / back-pressure — not a single-job latency win). | — |
 | 9 | **Ops & governance** — Prometheus/Grafana/Loki + OTel; drift monitors (confidence dist, human-override rate, unmapped-code rate); model registry + canary/rollback; Postgres primary+standby; MinIO 3-node; KMS; web-app AuthN/AuthZ; DPDP data-principal workflow; WORM audit. | — |
 | 10 | **Shadow-mode pilot** on real historical documents with clinician adjudication before anything is trusted or shared. | — |
-| 11 | **HW-Phase A — core immutable recognition pipeline** (§15): immutable evidence schema, lab + drug ontologies, alias cascade, line detection, TrOCR + Qwen disagreement under the evidence-hierarchy precedence rule, pixel grounding on line crops, per-field calibrated review. | **near-term target** — E4-S7, E4-S8, E3-S6/S7/S8, E2-S13, E2-S10→S11, E4-S4, E4-S2/S3 |
+| 11 | **HW-Phase A — core immutable recognition pipeline** (§15): immutable evidence schema, lab + drug ontologies, alias cascade, line detection, the second recognizer + Qwen disagreement under the evidence-hierarchy precedence rule, pixel grounding on line crops, per-field calibrated review. | **near-term target** — E4-S7, E4-S8, E3-S6/S7/S8, E2-S13, E2-S10→S11, E4-S4, E4-S2/S3 |
 | 12 | **HW-Phases B–E** — numeric recognizer + field grammars + negative constraints (B); practitioner-linked DoctorNode, vocabulary priors, bidirectional exemplar memory, novelty detection (C); adjudication learning loops, confusion/digit/layout/sequence profiles (D); per-doctor adapters only if a held-out benchmark proves them (E). | **sequenced, not scoped** — epic E15 |
 
 ### The gate, as implemented
@@ -1146,12 +1146,14 @@ clinical_fact + terminology binding + provenance ──────┤
 
 ## 15. Target recognition architecture — handwriting, evidence hierarchy, DoctorNode
 
+> **Status (2026-10): the second recognizer in this design was removed.** The deployed system has ONE handwriting reader, Qwen2.5-VL, reading each line crop (a second read with different padding is the stability check). RapidOCR reads the printed text. The ensemble, benchmark and disagreement material below is kept as the design record; nothing in it needs a second model to be downloaded or run.
+
 > **Status update (branch `feat/recognition-v2`):** HW-Phase A and parts of B are now
 > built in this repo - see **§17 As-built** for exactly what exists, where, and what is
 > still design-only. The text below remains the design of record.
 >
 > **Status: DESIGNED and FROZEN (2026-09-29), NOT BUILT.** This section came out of
-> a multi-round design review: a proposed TrOCR + Qwen ensemble, a
+> a multi-round design review: a proposed second-recognizer + Qwen ensemble, a
 > production-pipeline critique, and a closed-polyclinic personalization design. It
 > is the *target*, not the as-built system, so nothing here may be cited as
 > existing behaviour. HW-Phase A is committed as the near-term target. HW-Phases
@@ -1207,7 +1209,7 @@ principle):
              ┌───────────────────────┴────────────────────────┐
          PRINTED                                        HANDWRITTEN line crops
          RapidOCR (CPU, as built)                ┌──────────────┴──────────────┐
-             │                                TrOCR / HTR                 Qwen2.5-VL(-AWQ)
+             │                                second recognizer                 Qwen2.5-VL(-AWQ)
              │                                (literal)                   (contextual)
              │                                   └── run INDEPENDENTLY — no shared candidate ──┘
              └───────────────────────┬────────────────────────┘
@@ -1224,7 +1226,7 @@ principle):
                                      │     → interpretation_candidate (never edits raw_text)
                   [8] NEGATIVE CONSTRAINTS  eliminate impossible candidates; never invent (B)
                   [9] PIXEL GROUNDING  enlarged crop from ORIGINAL image; independent check
-                 [10] DISAGREEMENT ENGINE  TrOCR↔Qwen · OCR↔terminology · OCR↔grounding · fields
+                 [10] DISAGREEMENT ENGINE  second recognizer↔Qwen · OCR↔terminology · OCR↔grounding · fields
                  [11] CALIBRATED PER-FIELD CONFIDENCE  policy by field × evidence state
                                      │
                         ┌────────────┴────────────┐
@@ -1241,13 +1243,13 @@ The new work is stages 4–11.
 
 ### 15.3 Independent inference and the disagreement engine (E2-S10 → E2-S11)
 
-- **Independence is a hard requirement.** Qwen must never be prompted with TrOCR's
+- **Independence is a hard requirement.** Qwen must never be prompted with the second recognizer's
   output ("OCR thinks this is *Telma 40*, check it"). That is anchoring: the model
   agrees with the supplied candidate even when the pixels are ambiguous. It is the
   same bias E7-S9 measures in human reviewers, one layer earlier. A *separate*
   adjudication pass that sees both candidates plus the crop is allowed, but only as
   cascade level L7 (§15.6), after independent reads.
-- **Four disagreement sources** are compared, not two: (1) TrOCR vs Qwen on the same
+- **Four disagreement sources** are compared, not two: (1) the second recognizer vs Qwen on the same
   crop, (2) selected OCR candidate vs terminology/formulary retrieval, (3) selected
   candidate vs pixel grounding, (4) cross-field relations (e.g. a strength the
   matched drug is not made in). Any disagreement beyond tolerance **forces review
@@ -1262,10 +1264,10 @@ The new work is stages 4–11.
   name can be close in characters and still clinically wrong. Results are
   stratified by Bengali / English / mixed script.
 - **Worked cases (test fixtures):**
-  - TrOCR "Telma 4O", Qwen "Telma 40". Lexical, embedding and reranker all favour
+  - the second recognizer "Telma 4O", Qwen "Telma 40". Lexical, embedding and reranker all favour
     Telma 40 (0.995), and grounding supports both "Telma" and "40". → accept
     *Telma 40*.
-  - TrOCR "Telma 40", Qwen "Telmikind 40". Both are valid products and grounding
+  - the second recognizer "Telma 40", Qwen "Telmikind 40". Both are valid products and grounding
     cannot separate the names. → **REVIEW**. Never pick Telma because it is
     prescribed more often.
 
@@ -1280,7 +1282,7 @@ ocr_observation                       -- RAW. append-only. never UPDATEd, never 
   bbox int[], polygon, crop_hash       -- crop taken from the ORIGINAL image
   region_kind  printed|handwritten|mixed|uncertain
   field_domain text|strength|dose|frequency|duration|lab_value|age|date|null
-  engine       rapidocr|trocr|htr|qwen2.5-vl|digit|...
+  engine       rapidocr|qwen2.5-vl|digit|...
   engine_version, prompt_hash
   raw_text                             -- IMMUTABLE
   raw_confidence, token_confidences jsonb
@@ -1323,7 +1325,7 @@ What this changes relative to what is built:
 ### 15.5 Recognition ≠ normalization
 
 The recognition layer outputs **transcription only**, e.g. `{"raw":"Sr Cr",
-"trocr":"Sr Cr","qwen":"Sr. Cr"}`. It never outputs `SERUM_CREATININE` / LOINC
+"second_reader":"Sr Cr","qwen":"Sr. Cr"}`. It never outputs `SERUM_CREATININE` / LOINC
 `2160-0`. That is reasoning, and it happens only in `interpretation_candidate`. This
 is an **acceptance criterion** in E2-S11 and E4-S7, and is owned end-to-end by
 **E4-S9**, not a guideline:
@@ -1345,7 +1347,7 @@ the provenance principle.
 | Tier | Evidence | May | May never |
 |---|---|---|---|
 | 0 | **Pixels** (grounding on the original-image crop) | veto any candidate | be overridden by any lower tier |
-| 1 | **Independent recognizer readings** (RapidOCR / TrOCR / Qwen / numeric recognizer) and **visual exemplar similarity** | propose, support, contradict | be merged with normalization (§15.5) |
+| 1 | **Independent recognizer readings** (RapidOCR / second recognizer / Qwen / numeric recognizer) and **visual exemplar similarity** | propose, support, contradict | be merged with normalization (§15.5) |
 | 2 | **Lexical mapping** (verified alias > observed doctor alias > generated alias candidate; terminology validity) | map a reading to a concept | turn a literal reading into another string |
 | 3 | **Priors** (doctor vocabulary frequency, co-order / sequence, specialty, layout zone) | re-rank candidates already supported by tiers 0–2 | pick between two valid, pixel-indistinguishable candidates, or override pixels ("usually orders HbA1c" never beats pixels showing HBeAg) |
 | — | **Negative constraints** (specimen marker, glyph extent, strength↔drug, grammar) | eliminate candidates | add or invent text |
@@ -1371,9 +1373,9 @@ at L1 at zero GPU cost.
 - **The machine-readable decision trace** lists each evidence source, its tier, its
   score and reason, and the escalation cause. It is persisted with the fact and
   logged as an agent step (E12-S5). Every accepted fact carries its **evidence matrix**
-(one row per signal: TrOCR, Qwen, exemplars, alias, doctor vocabulary, co-order,
+(one row per signal: second recognizer, Qwen, exemplars, alias, doctor vocabulary, co-order,
 grounding, negative constraints). An auditor can then see *why* it was accepted.
-When the matrix has any real conflict (e.g. TrOCR "S.Creat", Qwen "S.Ca", ambiguous
+When the matrix has any real conflict (e.g. the second recognizer "S.Creat", Qwen "S.Ca", ambiguous
 exemplars, several alias hits), the fact goes to **review even when history favours
 one reading**.
 
@@ -1421,7 +1423,7 @@ one reading**.
   PRN); lab values; age; dates.
 - **The grammars reuse E2-S3's dormant grammar-locked decoding** (XGrammar /
   `guided_json`), extended from document schemas to field grammars. They are also
-  applied as a validator on TrOCR output. That makes this cheaper than it looks: the
+  applied as a validator on a second recognizer's output. That makes this cheaper than it looks: the
   infrastructure is already built.
 - Example: glyph probabilities for the third digit are 1 = 0.73, 7 = 0.21; the grammar
   is `d-d-d`; the doctor's historical glyph "1" matches at 0.96 and "7" at 0.54. →
@@ -1467,7 +1469,7 @@ once E2-S13 supplies line/field-level crops (§5 S3 limitation 2).
 |---|---|
 | Bad photograph | quality gate (E2-S12) |
 | Wrong doctor | Encounter link + registration no. + template (E6-S11, E15-S4) |
-| General handwriting error | TrOCR / HTR |
+| General handwriting error | second recognizer |
 | Contextual ambiguity | Qwen, *independent* |
 | Doctor-specific handwriting | exemplar memory (E15-S7) |
 | Repeated doctor OCR errors | confusion **candidate** map (E15-S10) |
@@ -1520,7 +1522,7 @@ DoctorNode #017
 ├── OCR confusion map   → candidates only, never text.replace()          (Phase D)
 ├── layout profile · co-order graph · sequence (n-gram/Markov) model      (Phase D)
 ├── confidence calibration
-└── optional handwriting adapter (TrOCR/HTR LoRA)                        (Phase E, only if proven)
+└── optional handwriting adapter (a second recognizer LoRA)                        (Phase E, only if proven)
 ```
 
 - **100 DoctorNodes are cheap. 100 models are not.** There is one global
@@ -1572,12 +1574,12 @@ DoctorNode #017
   exemplar, eval candidate, alias evidence and confusion evidence. This extends
   E4-S1.
 - **Adapter benchmark matrix (E15-S13)**, on held-out per-doctor data:
-  - A. global TrOCR
+  - A. global second recognizer
   - B. A + doctor exemplars
-  - C. doctor-adapted TrOCR
+  - C. doctor-adapted second recognizer
   - D. global Qwen
   - E. per-doctor Qwen LoRA
-  - F. TrOCR doctor adapter + global Qwen + exemplars
+  - F. second recognizer doctor adapter + global Qwen + exemplars
 
   The working hypothesis is that **F, or even B**, beats E on accuracy per unit of
   complexity. Style mostly affects the *recognition* problem, so if any adapter wins
@@ -1597,7 +1599,7 @@ DoctorNode #017
 
 | HW-Phase | Contents | Stories | State |
 |---|---|---|---|
-| **A — core immutable pipeline** | immutable 3-table schema; recognition/normalization boundary; evidence hierarchy + cascade; global lab-order ontology; drug master; alias engine (exact→normalized→fuzzy); line/region detection; Bengali benchmark → TrOCR + Qwen disagreement; pixel grounding; per-field calibrated review; selective-prediction KPI; practitioner link at ingestion; AWQ base-VLM validation | **E4-S7, E4-S9, E4-S8, E3-S7, E3-S6, E3-S8, E2-S13, E2-S10 → E2-S11, E4-S4, E4-S2/S3, E4-S10, E6-S11, E2-S14** (+ E2-S12 quality gate, E2-S7 CI gate) | **near-term target, scoped** |
+| **A — core immutable pipeline** | immutable 3-table schema; recognition/normalization boundary; evidence hierarchy + cascade; global lab-order ontology; drug master; alias engine (exact→normalized→fuzzy); line/region detection; Bengali benchmark → the second recognizer + Qwen disagreement; pixel grounding; per-field calibrated review; selective-prediction KPI; practitioner link at ingestion; AWQ base-VLM validation | **E4-S7, E4-S9, E4-S8, E3-S7, E3-S6, E3-S8, E2-S13, E2-S10 → E2-S11, E4-S4, E4-S2/S3, E4-S10, E6-S11, E2-S14** (+ E2-S12 quality gate, E2-S7 CI gate) | **near-term target, scoped** |
 | B — safety | domain numeric recognizer; field grammars; negative constraints | E15-S1, E15-S2, E15-S3 | sequenced, **not scoped** (precision/coverage dashboard was pulled forward into A as E4-S10, because Phase A's exit and the E2-S10 go/no-go can't be measured without it) |
 | C — polyclinic advantage | deterministic doctor ID for unlinked documents + template fingerprints; DoctorNode; vocabulary priors; bidirectional exemplar memory; novelty detection | E15-S4 … E15-S8 | sequenced, **not scoped** |
 | D — learning | adjudication → three loops; confusion candidate maps; digit/glyph profiles; layout / co-order / sequence priors | E15-S9 … E15-S12 | sequenced, **not scoped** |
@@ -1610,7 +1612,7 @@ DoctorNode #017
 1. **GPU / checkpoint size.** The pilot pod runs Qwen2.5-VL-7B in **bf16 (~15–16 GB)
    on a 32 GB RTX PRO 4500** (§1, Appendix B), and this works. `emr.docx` states the
    project "already chose the AWQ build (~6.92 GB)". That holds for the *production /
-   shared-GPU target* (E13-S2, E13-S6) and for keeping TrOCR resident alongside Qwen.
+   shared-GPU target* (E13-S2, E13-S6) and for keeping a second model resident alongside Qwen.
    It does not hold for the pilot pod. E2-S14 validates AWQ as non-inferior before any
    switch. Do not size hardware from the 16.6 GB published-checkpoint figure.
 2. **Classification order.** The E2-S10/S11 handoff (written from `DESIGN.md`) calls
@@ -1622,9 +1624,9 @@ DoctorNode #017
 4. **E2-S10 dataset does not exist.** 500–1,000 de-identified West Bengal
    prescription lines, sourcing owner TBD. **Do not synthesize.** De-identify via
    E11-S4 first. This blocks the whole handwritten-ensemble decision.
-5. **Off-the-shelf TrOCR checkpoints are English** (trained on IAM). E2-S10 must name
-   the exact HTR checkpoint used for Bengali lines. If no Bengali-capable one exists,
-   report TrOCR as an English-only arm rather than claim a Bengali result.
+5. **Off-the-shelf handwriting-line checkpoints are English** (trained on IAM). E2-S10 must name
+   the exact checkpoint used for Bengali lines. If no Bengali-capable one exists,
+   report it as an English-only arm rather than claim a Bengali result.
 6. **IG version.** The code pins `nrces.fhir.r4.ndhm#6.5.0`, while the current IG is
    v7.0.0 (§6.1 #1, E6-S9).
 7. **Parallel draft reconciled.** A second draft of this design
@@ -1689,9 +1691,9 @@ upload / listener ──► S1 ingest ── OpenCV quality gate ──► quali
             per line: printed | handwritten | mixed | uncertain
               printed      ──► RapidOCR text                             state = printed
               otherwise    ──► crop from src.png
-                               ├─ TrOCR  (CPU host, literal)              ┐ independent,
-                               └─ Qwen2.5-VL per crop (constant prompt)  ┘ never anchored
-                               disagreement engine ──► agree | disagree | single_engine | no_reading
+                               └─ Qwen2.5-VL per crop (constant prompt; the one reader, a second
+                                  read with other padding is the stability check)
+                               verdict ──► single_engine | no_reading (a person checks every handwritten line)
             no lines found / page error ──► legacy page-level VLM            state = page_level
             every reading ──► ocr_observation ; ocr_block rebuilt with observation_ids + recognition
                          ▼
@@ -1713,9 +1715,9 @@ upload / listener ──► S1 ingest ── OpenCV quality gate ──► quali
 
 | Concern | Module | Notes |
 |---|---|---|
-| CPU OCR host | `ocrhost/app.py` (`python -m cdi_adapter.ocrhost`, :8079) | `POST /ocr/rapid`, `POST /ocr/trocr`, `GET /healthz`; `CDI_OCRHOST_URL` blank = in-process |
-| Host client | `recognition/ocrhost_client.py` | host down ⇒ TrOCR readings carry `error` ⇒ `single_engine` ⇒ review, never auto-accept |
-| Engines | `recognition/engines.py` | `TrOCREngine` (batched greedy, confidence = geometric mean of token probs; transformers-5 tokenizer fallback incl. TrOCR-small sentencepiece), `QwenLineEngine` (constant prompt, `conf=None`) |
+| CPU OCR host | `ocrhost/app.py` (`python -m cdi_adapter.ocrhost`, :8079) | `POST /ocr/rapid`, `GET /healthz`; `CDI_OCRHOST_URL` blank = in-process |
+| Host client | `recognition/ocrhost_client.py` | Qwen is the one handwriting reader: every handwritten line is `single_engine` ⇒ review, never auto-accept |
+| Engines | `recognition/engines.py` | `QwenLineEngine` (constant prompt, `conf=None`) |
 | Quality gate | `recognition/quality.py`, `ingest/pages.py`, `ingest/service.py` | blur (Laplacian var @1200 px), glare (only on non-white paper), dark fraction, short side, rotated-90 warning; `CDI_QUALITY_GATE_MODE=enforce|warn|off` |
 | Regions | `recognition/regions.py` | RapidOCR coverage/confidence + stroke-width CV; unexplained ink ⇒ handwritten; unexplained RapidOCR lines kept as printed |
 | Disagreement | `recognition/disagreement.py` | material = any number differs (after O→0-style normalisation inside numbers) or similarity < 0.85 |
@@ -1737,8 +1739,7 @@ upload / listener ──► S1 ingest ── OpenCV quality gate ──► quali
 
 ```bash
 bash /workspace/cdi/infra/runpod/start_all.sh        # now also starts ocrhost (:8079) + agents
-curl -s http://127.0.0.1:8079/healthz                  # rapidocr true, trocr {model, loaded}
-# first TrOCR request downloads microsoft/trocr-base-handwritten (~1.3 GB) to /workspace/hf-cache
+curl -s http://127.0.0.1:8079/healthz                  # rapidocr true
 CDI_START_LISTENER=1 bash infra/runpod/start_all.sh    # also run the file listener
 python -m cdi_adapter.listener.service --once          # one poll (local: ./data/listener/inbox); --check / --login for cloud drives
 python -m cdi_adapter.agents.fhir_builder --once       # drain the FHIR outbox
@@ -1751,7 +1752,7 @@ Rollback: `CDI_RECOGNITION_V2=false` restores the legacy page-level VLM path;
 
 ### 17.4 Still design-only (not in this branch)
 
-TrOCR fine-tune / Bengali checkpoint (E2-S10 benchmark), grammar-locked decoding,
+A second line recognizer / Bengali checkpoint (E2-S10 benchmark), grammar-locked decoding,
 calibration fitting (all thresholds assumed), exemplar memory, embeddings / reranker /
 Qwen adjudication (cascade L5–L8), DoctorNode and learning loops (HW-Phases C–E),
 class-B alias generation, review-console UI for the new evidence fields (the API returns
@@ -1803,7 +1804,7 @@ clinical-emr-adapter/
 | vLLM | *not installed* — planned serving backend (§7.4), needs a Blackwell sm_120 / torch 2.8 build |
 | VLM | `Qwen/Qwen2.5-VL-7B-Instruct` (Apache-2.0), bf16, ~15 GB VRAM, sdpa attention |
 | OCR | `rapidocr-onnxruntime` + `onnxruntime` (CPU) |
-| *Target, not installed (§15)* | TrOCR / HTR line recognizer (the Bengali-capable checkpoint is chosen by E2-S10); `Qwen2.5-VL-7B-Instruct-AWQ` candidate (E2-S14); vision-embedding index for exemplar memory (HW-Phase C) |
+| *Target, not installed (§15)* | a second line recognizer (the Bengali-capable checkpoint is chosen by E2-S10); `Qwen2.5-VL-7B-Instruct-AWQ` candidate (E2-S14); vision-embedding index for exemplar memory (HW-Phase C) |
 | API / server | FastAPI + uvicorn |
 | DB / store / broker | PostgreSQL 16, SeaweedFS 4.48, Redis 7 |
 | schema validation | `jsonschema` + `referencing` registry |

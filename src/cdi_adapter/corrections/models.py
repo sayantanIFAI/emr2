@@ -33,7 +33,6 @@ correction = Table(
     Column("field_type", Text, nullable=False),
     Column("original_value", Text),
     Column("qwen_value", Text),
-    Column("trocr_value", Text),
     Column("corrected_value", Text, nullable=False),
     Column("confidence", Numeric(5, 4)),
     Column("prediction_status", Text),

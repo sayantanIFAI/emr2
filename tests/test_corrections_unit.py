@@ -56,7 +56,7 @@ def sess():
 
 def ctx(original="S Cr", doctor=DR_A, ftype="investigation_order", **kw):
     return svc.Context(document_id=DOC, fact_id=FACT, field_type=ftype, original_value=original, doctor_id=doctor,
-                       qwen_value=kw.pop("qwen", "S Cr"), trocr_value=kw.pop("trocr", "S Gr"), confidence=0.62,
+                       qwen_value=kw.pop("qwen", "S Cr"), confidence=0.62,
                        prediction_status="needs_review", crop_hash="a" * 64,
                        crop_ref={"observation_ids": ["o1", "o2"], "page_id": "p1", "bboxes": [[1, 2, 30, 40]]},
                        model_stack={"extractor": "Qwen/Qwen2.5-VL-7B-Instruct"}, **kw)
@@ -73,8 +73,8 @@ def test_a_correction_stores_the_whole_picture_append_only(sess):
     out = correct(sess)
     row = sess.execute(select(M.correction)).mappings().one()
     assert out["correction_id"] == row["id"] and out["corrected_value"] == "Serum Creatinine"
-    assert (row["original_value"], row["qwen_value"], row["trocr_value"], row["corrected_value"]) == (
-        "S Cr", "S Cr", "S Gr", "Serum Creatinine")
+    assert (row["original_value"], row["qwen_value"], row["corrected_value"]) == (
+        "S Cr", "S Cr", "Serum Creatinine")
     assert (row["doctor_id"], row["field_type"], row["reviewer_id"], row["prediction_status"]) == (
         DR_A, "investigation_order", "dr.rao", "needs_review")
     assert row["crop_hash"] == "a" * 64 and row["crop_ref"]["bboxes"] == [[1, 2, 30, 40]]
@@ -296,7 +296,7 @@ def test_the_training_export_is_oldest_first_and_can_be_sliced(sess):
     assert len(svc.export_training(sess, limit=2)) == 2
     r = rows[0]
     assert {"correction_id", "prescription_id", "field_id", "doctor_id", "field_type", "original_value", "qwen_value",
-            "trocr_value", "corrected_value", "confidence", "prediction_status", "crop_hash", "crop_ref",
+            "corrected_value", "confidence", "prediction_status", "crop_hash", "crop_ref",
             "reviewer_id", "model_stack", "created_at"} == set(r)
     json.dumps(r)
 
@@ -308,11 +308,11 @@ def test_the_field_record_has_what_the_correction_tool_needs():
     fact = {"id": "F1", "fact_type": "investigation_order", "local_text": "S Cr", "confidence_overall": 0.6234,
             "review_state": "in_review"}
     blocks = [{"observation_ids": ["o1"], "bbox": [1, 2, 3, 4],
-               "recognition": {"engines": {"qwen2.5-vl": "S Cr", "trocr": "S Gr"}}}]
+               "recognition": {"engines": {"qwen2.5-vl": "S Cr"}}}]
     rec = svc.build_field_record(fact, blocks, DR_A, DOC, {"o1": "c" * 64})
     assert rec == {"prescription_id": DOC, "doctor_id": DR_A, "field_id": "F1", "field_type": "investigation_order",
                    "raw_crop_reference": {"observation_ids": ["o1"], "crop_hashes": ["c" * 64], "bboxes": [[1, 2, 3, 4]]},
-                   "qwen_value": "S Cr", "trocr_value": "S Gr", "final_value": "S Cr", "confidence": 0.623,
+                   "qwen_value": "S Cr", "final_value": "S Cr", "confidence": 0.623,
                    "status": "needs_review"}
 
 
@@ -323,11 +323,11 @@ def test_prediction_status(state, status):
     assert svc.prediction_status(state) == status
 
 
-def test_engine_values_join_the_lines_a_field_came_from_and_skip_what_was_not_read():
-    blocks = [{"recognition": {"engines": {"qwen2.5-vl": "Serum", "trocr": "Serun"}}},
+def test_engine_value_joins_the_lines_a_field_came_from_and_skip_what_was_not_read():
+    blocks = [{"recognition": {"engines": {"qwen2.5-vl": "Serum"}}},
               {"recognition": {"engines": {"qwen2.5-vl": "Cr"}}}, {"recognition": None}, {}]
-    assert svc.engine_values(blocks) == ("Serum Cr", "Serun")
-    assert svc.engine_values([]) == (None, None)
+    assert svc.engine_value(blocks) == "Serum Cr"
+    assert svc.engine_value([]) is None
 
 
 # ------------------------------------------------------------------ the HTTP API

@@ -1,6 +1,6 @@
 """Disagreement-rate drift alarm (RD-S3).
 
-The share of handwritten lines on which TrOCR and Qwen disagree is a cheap health signal: a new
+The share of handwritten lines on which two readings of the line disagree is a cheap health signal: a new
 scanner, a new doctor, a model update or a broken host moves it. This compares each document's rate
 with the rates of the runs before it and says when the move is larger than normal. It only
 measures and warns: it never changes a reading or a decision.

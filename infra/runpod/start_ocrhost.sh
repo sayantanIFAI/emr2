@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# CPU OCR host (recognition v2): RapidOCR printed lines + TrOCR handwriting line crops.
-# TrOCR weights (~1.3 GB for trocr-base) cache to /workspace/hf-cache on first request.
+# CPU OCR host (recognition v2): RapidOCR reads the printed lines. Handwriting is read by Qwen2.5-VL (vLLM), not here.
 set -euo pipefail
 REPO=/workspace/cdi
 cd "$REPO"

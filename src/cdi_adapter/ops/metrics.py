@@ -110,7 +110,7 @@ def render(sess: Any) -> str:
         rates = recent_rates(sess, "00000000-0000-0000-0000-000000000000", limit=50)
         if rates:
             o.metric("cdi_reader_disagreement_rate", round(sum(rates) / len(rates), 4),
-                     "Mean share of handwriting lines on which TrOCR and Qwen disagree (last 50 recognition runs)")
+                     "Mean share of handwriting lines on which the two reads of the same line disagree (last 50 recognition runs)")
     except Exception:  # noqa: BLE001
         pass
 

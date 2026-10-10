@@ -1,10 +1,8 @@
 """The deployment surface: sign-in in front of everything, review / FHIR paths closed by default,
-the admin upload page, the two readers running at the same time, and where TrOCR runs."""
+the admin upload page, and the file listener."""
 from __future__ import annotations
 
 import base64
-import threading
-import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -102,49 +100,6 @@ def test_no_password_is_allowed_only_in_dev(monkeypatch):
 def test_no_password_in_dev_means_no_sign_in(monkeypatch):
     monkeypatch.setattr(settings, "admin_password", "")
     assert TestClient(webapp.app).get("/").status_code == 200
-
-
-def test_the_two_readers_run_at_the_same_time(monkeypatch):
-    """TrOCR and Qwen read the same crops concurrently: the wall time is the slower one, not the sum."""
-    from cdi_adapter.recognition import pipeline
-
-    started: dict[str, float] = {}
-    ready = threading.Barrier(2, timeout=5)
-
-    class Host:
-        def trocr(self, crops):
-            started["trocr"] = time.time(); ready.wait(); return ["t"] * len(crops)
-
-    class Qwen:
-        def recognize(self, crops):
-            started["qwen"] = time.time(); ready.wait(); return ["q"] * len(crops)
-
-    monkeypatch.setattr(pipeline, "QwenLineEngine", Qwen)
-    # the same two lines recognize_page runs, isolated
-    from concurrent.futures import ThreadPoolExecutor
-    with ThreadPoolExecutor(max_workers=2) as ex:
-        a = ex.submit(Host().trocr, [b"x"]); b = ex.submit(pipeline.QwenLineEngine().recognize, [b"x"])
-        assert a.result() == ["t"] and b.result() == ["q"]      # a barrier of 2 only opens if both run together
-    assert set(started) == {"trocr", "qwen"}
-
-
-def test_trocr_device_choice(monkeypatch):
-    from cdi_adapter.recognition.engines import TrOCREngine
-
-    class T:                                        # a stand-in for torch
-        class cuda:
-            avail = True
-            @classmethod
-            def is_available(cls): return cls.avail
-
-    monkeypatch.setattr(settings, "trocr_device", "cpu")
-    assert TrOCREngine._pick_device(T) == "cpu"
-    monkeypatch.setattr(settings, "trocr_device", "cuda")
-    assert TrOCREngine._pick_device(T) == "cuda"
-    T.cuda.avail = False
-    assert TrOCREngine._pick_device(T) == "cpu"     # no GPU: the CPU, with a warning
-    monkeypatch.setattr(settings, "trocr_device", "auto")
-    assert TrOCREngine._pick_device(T) == "cpu"
 
 
 def test_fhir_outbox_is_not_filled_unless_enabled(monkeypatch):

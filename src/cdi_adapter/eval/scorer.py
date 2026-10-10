@@ -38,7 +38,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from ..recognition.bench_htr import levenshtein, wilson_lower
+from ..recognition.scoring import levenshtein, wilson_lower
 
 ACCEPTED = {"checked", "accepted"}
 SCALARS = [("patient", k) for k in ("name", "age_text", "dob", "sex", "mrn", "phone", "address", "abha_id")] + \

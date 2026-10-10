@@ -14,7 +14,7 @@ LOG=/workspace/logs/vllm.log
 PORT="${CDI_VLLM_PORT:-8078}"
 MODEL="${CDI_VLM_MODEL_ID:-Qwen/Qwen2.5-VL-7B-Instruct}"
 QUANT="${CDI_VLLM_QUANT:-}"                   # "" (bf16) | fp8
-UTIL="${CDI_VLLM_GPU_UTIL:-0.80}"             # share of the GPU memory vLLM may take; the rest is for TrOCR
+UTIL="${CDI_VLLM_GPU_UTIL:-0.80}"             # share of the GPU memory vLLM may take; the rest is for the CUDA context and other processes
 MAXSEQS="${CDI_VLLM_MAX_SEQS:-16}"
 export HF_HOME=/workspace/hf-cache PYTHONUNBUFFERED=1 VLLM_LOGGING_LEVEL=INFO
 # Blackwell (sm_120): vLLM 0.28's FlashInfer sampler misfires a stale CUDA-version

@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS ocr_observation (
   polygon           jsonb,
   crop_hash         char(64),               -- sha256 of the crop cut from the SOURCE render
   field_domain      text,                   -- text|strength|dose|frequency|duration|lab_value|date|null
-  engine            text NOT NULL,          -- rapidocr|trocr|qwen2.5-vl|...
+  engine            text NOT NULL,          -- rapidocr|qwen2.5-vl|...
   engine_version    text NOT NULL,
   prompt_hash       text,
   raw_text          text NOT NULL,

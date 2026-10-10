@@ -3,21 +3,21 @@
 Status date: 2026-10-07. Everything below that says MEASURED was measured on **three real prescription photos from three
 different doctors** (two human clinics, one veterinary clinic). Three pages is a small sample: it shows direction, not a rate.
 
-## Decision 1: TrOCR is off (`CDI_TROCR_ENABLED=false`)
+## Decision 1: Qwen is the only handwriting reader
 
 | MEASURED on the three pages | |
 |---|---|
-| lines both TrOCR and Qwen read | 249 |
+| lines a second line-recognition model and Qwen both read | 249 |
 | exact agreement | 3% |
 | close agreement (similarity 0.8 or more) | 11% |
 
-On real handwriting `trocr-base-handwritten` (trained on IAM, clean English sentences) writes fluent unrelated English
+On real handwriting that second model (trained on clean English sentences) wrote fluent unrelated English
 ("spouses" for the Apollo logo, "campaigned" for "( 1PM 2PM )", "umbarcina mother's best" for "umbilicus noticed few").
 With agreement that low, "the readers disagree" stops meaning "this line is risky": it sends everything to review.
 
-* It stays in the code and in the model registry as a **candidate**; turning it on needs the registry entry promoted to
-  champion after `recognition/bench_htr.py` shows it adds value on real, labelled lines.
-* While it is off, Qwen2.5-VL-7B is the one handwriting reader. Every handwriting line is single-reader, and the
+* It has been **removed**: from the code, the settings, the model registry, the deploy scripts and the pod's model
+  download. Nothing for it is downloaded or run.
+* Qwen2.5-VL-7B is the one handwriting reader. Every handwriting line is single-reader, and the
   validation policy (`validate/policy.py`) sends single-reader lines for medicines, conditions, vitals and tests to review.
   That is safe and it is also why nothing is auto-accepted yet.
 
@@ -53,7 +53,7 @@ The limits (`CDI_NONTEXT_*`) are PLACEHOLDERS from these three photos.
 ## What would actually move accuracy (in order)
 
 1. A labelled set of real lines (the owner expects 100,000+ lines from about 150 doctors): `eval/` scores it, the
-   correction loop exports corrections, `recognition/bench_htr.py` benchmarks readers.
+   correction loop exports corrections, `recognition/scoring.py` scores labelled lines.
 2. A LoRA fine-tune of Qwen2.5-VL-7B (Apache-2.0) on those lines, split by doctor so a new doctor is a fair test.
 3. Reading each line against the reference lists by likelihood (rank the candidates by how well the model's own probabilities
    fit the crop) instead of asking for a number. Not built yet.

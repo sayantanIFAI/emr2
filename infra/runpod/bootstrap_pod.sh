@@ -80,8 +80,8 @@ cd "$REPO"
 . .venv/bin/activate
 export PIP_ROOT_USER_ACTION=ignore
 python -c "import cdi_adapter, rapidocr_onnxruntime, transformers" 2>/dev/null || {
-  pip install -q -e ".[dev,ocr,trocr,listener]"
-  pip install -q transformers accelerate qwen-vl-utils einops sentencepiece
+  pip install -q -e ".[dev,ocr,listener]"
+  pip install -q transformers accelerate qwen-vl-utils einops sentencepiece protobuf
 }
 set -a; . "$REPO/.env"; set +a
 PSQL_URL="${CDI_DATABASE_URL/+psycopg/}"   # psql/pg_restore want plain postgresql://

@@ -112,9 +112,6 @@ def check_settings(s: Settings | None = None, reg: dict[str, Any] | None = None)
         if s.vlm_fallback_model_id:
             check_model(s.vlm_fallback_model_id, "CDI_VLM_FALLBACK_MODEL_ID", reg=reg)
             checked.append(s.vlm_fallback_model_id)
-    if s.trocr_enabled:
-        check_model(s.trocr_model_id, "CDI_TROCR_MODEL_ID", reg=reg)
-        checked.append(s.trocr_model_id)
     return checked
 
 

@@ -20,7 +20,7 @@ from datetime import date
 from pathlib import Path
 
 REGISTRY = Path(__file__).resolve().parents[1] / "src" / "cdi_adapter" / "compliance" / "models.json"
-LICENCE_FILES = {"Apache-2.0": "licences/Apache-2.0.txt", "MIT": "licences/MIT-trocr.txt"}
+LICENCE_FILES = {"Apache-2.0": "licences/Apache-2.0.txt", "MIT": "licences/MIT.txt"}
 
 
 def main() -> int:

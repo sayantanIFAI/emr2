@@ -149,7 +149,7 @@ def flatten(result: dict[str, Any]) -> list[dict[str, Any]]:
         "result_status": result.get("status"), "needs_check_count": result.get("needs_check_count"),
         "extraction_incomplete": result.get("extraction_incomplete"), "quality_passed": quality.get("passed"), "quality_reasons": quality,
         "flags": result.get("flags"), "vlm_served": eng.get("vlm_served"), "vlm_revision": eng.get("vlm_revision"),
-        "prompt_version": prov.get("prompt_version"), "printed_ocr_engine": eng.get("printed_ocr"), "handwriting_engine": eng.get("trocr"),
+        "prompt_version": prov.get("prompt_version"), "printed_ocr_engine": eng.get("printed_ocr"), "handwriting_engine": eng.get("vlm_served") or eng.get("vlm_configured"),
         "patient_name": _v(name), "patient_name_status": _st(name), "patient_name_confidence": _num(name.get("confidence")) if isinstance(name, dict) else None,
         "patient_age_text": _v(p.get("age_text")), "patient_age_status": _st(p.get("age_text")),
         "patient_dob": _v(p.get("dob")), "patient_dob_status": _st(p.get("dob")),

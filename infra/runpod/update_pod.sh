@@ -2,7 +2,7 @@
 # Update a RUNNING pod to the latest origin/main without touching the model server (vLLM keeps its GPU memory):
 # pull -> migrate the database -> restart the web app, the OCR host and the retry agent -> wait until healthy.
 # Settings in /workspace/cdi/.env are kept; pass KEY=VALUE pairs to change some:
-#     bash infra/runpod/update_pod.sh CDI_TROCR_ENABLED=false
+#     bash infra/runpod/update_pod.sh CDI_RAPIDOCR_USE_CUDA=false
 set -uo pipefail
 REPO=/workspace/cdi
 cd "$REPO"

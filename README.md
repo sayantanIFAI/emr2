@@ -78,8 +78,8 @@ not full-precision co-resident 7B.
 ## Recognition v2 (handwriting, evidence, agents)
 
 Design: `docs/ARCHITECTURE.md` §15–§16; what is built: **§17**. In short:
-OpenCV quality gate → RapidOCR (printed) → OpenCV line regions → **TrOCR on a CPU OCR host**
-+ **Qwen2.5-VL per line crop**, independently → disagreement engine → append-only
+OpenCV quality gate → RapidOCR (printed) → OpenCV line regions → **Qwen2.5-VL per line crop**
+(the one handwriting reader) → single-reader verdict → append-only
 `ocr_observation` → extraction → alias cascade + clinical-context plausibility → pixel
 grounding + per-field policy → `verified_fact` ledger → normalised `rx_*` tables → FHIR
 builder agent (blob store). Plus a file listener (OneDrive / SharePoint / Google Drive / local - chosen by config only, batches of 3, 3 retries, `success`/`error`/`log` folders; see `docs/LISTENER.md`),

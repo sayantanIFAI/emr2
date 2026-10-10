@@ -1,4 +1,4 @@
-"""Disagreement engine (E2-S11): TrOCR vs Qwen, OCR vs terminology, candidate vs grounding,
+"""Disagreement engine (E2-S11): reader vs reader, OCR vs terminology, candidate vs grounding,
 cross-field. Any MATERIAL disagreement forces review regardless of model confidence.
 
 "Material" = after numeric-context normalisation (O->0 inside numbers) the numbers differ,
@@ -65,9 +65,7 @@ def compare_engines(readings: list[Reading]) -> EngineVerdict:
     agree, det = compare_texts(a.text, b.text)
     det.update({"engines": [a.engine, b.engine], "texts": [a.text, b.text]})
     if agree:
-        # prefer the literal recognizer's text (TrOCR) when both say the same thing
-        lit = next((r for r in ok if r.engine == "trocr"), a)
-        return EngineVerdict(AGREE, lit.text, det)
+        return EngineVerdict(AGREE, a.text, det)
     return EngineVerdict(DISAGREE, f"{a.text} ⟂ {b.text}", det)
 
 

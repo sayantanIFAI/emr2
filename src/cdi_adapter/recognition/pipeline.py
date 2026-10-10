@@ -3,8 +3,9 @@
 
     page (src render) ──► RapidOCR lines (printed evidence, CPU host)
                      └──► OpenCV line detection + printed/handwritten/mixed classifier
-    handwritten | mixed | uncertain line crop ──► TrOCR (CPU host)      ─┐ independent,
-                                             └──► Qwen2.5-VL per crop  ─┘ never anchored
+    handwritten | mixed | uncertain line crop ──► Qwen2.5-VL per crop (the one handwriting reader;
+                                                  a second read of the same line with other padding
+                                                  is the stability check)
     every reading ──► ocr_observation (append-only)
     per line verdict (printed | agree | disagree | single_engine | no_reading)
                  ──► ocr_block.recognition  (S4 reads the text, S6 gates on the state)
@@ -15,7 +16,6 @@ page-level VLM transcription, recorded with evidence state ``page_level``.
 from __future__ import annotations
 
 import hashlib
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any
 
@@ -120,18 +120,7 @@ def recognize_page(*, document_id: str, page: dict[str, Any], rapid_lines: list[
     prepared = [prepare_crop(src, r.bbox) for r in hw]             # the crop standard (IM-S3)
     crops = [p[0] for p in prepared]
     crop_info = [p[1] for p in prepared]
-    host = get_ocr_host()
-    if crops and settings.trocr_enabled:
-        # the two readers are independent (neither sees the other's answer) and sit on different
-        # servers, so they read the same crops at the same time
-        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="read") as ex:
-            f_tro = ex.submit(host.trocr, crops)
-            f_qwe = ex.submit(QwenLineEngine().recognize, crops)
-            tro, qwe = f_tro.result(), f_qwe.result()
-    elif crops:
-        tro, qwe = [], QwenLineEngine().recognize(crops)        # TrOCR is off: Qwen is the one handwriting reader
-    else:
-        tro, qwe = [], []
+    qwe = QwenLineEngine().recognize(crops) if crops else []
     qwe_b: list[Reading] = []
     again: list[bytes] = []
     if crops and settings.qwen_self_consistency:
@@ -158,8 +147,7 @@ def recognize_page(*, document_id: str, page: dict[str, Any], rapid_lines: list[
                                            "features": r.features}})
             continue
         i = hw_idx[id(r)]
-        readings = [x for x in (tro[i] if i < len(tro) else None,
-                                qwe[i] if i < len(qwe) else None) if x is not None]
+        readings = [x for x in (qwe[i] if i < len(qwe) else None,) if x is not None]
         verdict = compare_engines(readings)
         second = qwe_b[i] if i < len(qwe_b) else None
         if second is not None and i < len(qwe) and qwe[i] is not None:
@@ -249,7 +237,7 @@ def recognize_document(document_id: str) -> RecognizeResult:
             raise ValueError(f"document {document_id} has no rendered pages")
         run_id = repo.start_pipeline_run(
             sess, document_id=document_id, stage="ocr", model_name="recognition-v2",
-            params={"trocr": settings.trocr_model_id, "qwen_line_mode": settings.qwen_line_mode,
+            params={"qwen_line_mode": settings.qwen_line_mode,
                     "ocrhost": settings.ocrhost_url or "in-process"})
         rapid_obs = repo.list_current_observations(sess, document_id, engine="rapidocr")
     lang = cls["language"][0] if cls and cls.get("language") else None
@@ -306,10 +294,7 @@ def recognize_document(document_id: str) -> RecognizeResult:
             for b in all_blocks:
                 s = (b.get("recognition") or {}).get("state", "?")
                 states[s] = states.get(s, 0) + 1
-            eng = get_ocr_host()
-            engines = {"trocr": getattr(getattr(eng, "_trocr", None), "info", lambda: {
-                "model": settings.trocr_model_id, "host": settings.ocrhost_url})(),
-                "qwen_line_mode": settings.qwen_line_mode}
+            engines = {"qwen_line_mode": settings.qwen_line_mode, "ocrhost": settings.ocrhost_url or "in-process"}
             rate, drift = disagreement_rate(states), None
             if rate is not None:
                 try:                       # a failed history query must never lose the document

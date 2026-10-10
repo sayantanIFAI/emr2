@@ -7,29 +7,18 @@ from typing import Protocol
 import httpx
 
 from ..config import settings
-from ..logging import get_logger
 from ..ocr.rapid import OcrLine
-from .engines import Reading, TrOCREngine
-
-log = get_logger(__name__)
 
 
 class OcrHost(Protocol):
     def rapid(self, png: bytes, use_cls: bool = True) -> list[OcrLine]: ...
-    def trocr(self, crops_png: list[bytes]) -> list[Reading]: ...
 
 
 class LocalOcrHost:
-    def __init__(self) -> None:
-        self._trocr = TrOCREngine()
-
     def rapid(self, png: bytes, use_cls: bool = True) -> list[OcrLine]:
         from ..ocr.rapid import run_rapidocr
 
         return run_rapidocr(png, use_cls=use_cls)
-
-    def trocr(self, crops_png: list[bytes]) -> list[Reading]:
-        return self._trocr.recognize(crops_png) if crops_png else []
 
 
 class HttpOcrHost:
@@ -41,24 +30,6 @@ class HttpOcrHost:
         r.raise_for_status()
         return [OcrLine(text=x["text"], bbox=list(x["bbox"]), conf=float(x["conf"]),
                         polygon=x.get("polygon") or []) for x in r.json()["lines"]]
-
-    def trocr(self, crops_png: list[bytes]) -> list[Reading]:
-        if not crops_png:
-            return []
-        try:
-            r = self._c.post("/ocr/trocr", json={
-                "images_b64": [base64.b64encode(b).decode() for b in crops_png]})
-            r.raise_for_status()
-            js = r.json()
-        except httpx.HTTPError as exc:
-            # the CPU host being down degrades to "single engine" (-> forced review),
-            # never to a silent auto-accept
-            log.error("ocrhost_trocr_failed", error=str(exc)[:200])
-            return [Reading("trocr", settings.trocr_model_id, "", None,
-                            error=f"ocrhost unreachable: {exc}") for _ in crops_png]
-        return [Reading("trocr", js.get("model") or settings.trocr_model_id, x["text"],
-                        x.get("conf"), x.get("token_confidences") or [], error=x.get("error"))
-                for x in js["readings"]]
 
 
 _host: OcrHost | None = None

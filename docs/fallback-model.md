@@ -1,14 +1,14 @@
 # The OOM fallback model: Qwen2-VL-7B-Instruct
 
 **The main OCR/vision model is Qwen2.5-VL-7B-Instruct** (`CDI_VLM_MODEL_ID`). It reads every
-handwritten line crop (next to TrOCR) and does S4 extraction. The fallback
+handwritten line crop and does S4 extraction. The fallback
 (`CDI_VLM_FALLBACK_MODEL_ID`, default **Qwen2-VL-7B-Instruct**) is loaded by the gateway
 (`mlserve`, `hf` backend) only when the primary fails to load (out of memory), so work is never
 dropped. It replaced Qwen2.5-VL-3B-Instruct (non-commercial licence).
 
 Pipeline for handwriting (unchanged): pdfium (PDF) / Pillow (images, EXIF-upright) -> OpenCV
-normalise -> printed lines: RapidOCR; handwritten / mixed lines: TrOCR **and** Qwen per crop ->
-disagreement engine -> evidence -> S4 extraction -> S6 gate.
+normalise -> printed lines: RapidOCR; handwritten / mixed lines: Qwen per crop ->
+evidence -> S4 extraction -> S6 gate.
 
 ## What the change costs, and what the code does about it
 

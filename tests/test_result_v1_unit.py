@@ -120,7 +120,7 @@ def test_the_result_names_what_read_it():                           # SW-S1 AC4,
     inp = T._inputs([T.HBA], payload=T.PAYLOAD)
     inp.extraction = {"schema_version": "v3", "prompt_version": "p-0123456789ab",
                       "engine_versions": {"vlm_served": "Qwen/Qwen2.5-VL-7B-Instruct", "vlm_revision": "c" * 40,
-                                          "trocr": "microsoft/trocr-base-handwritten", "recognition_v2": True,
+                                          "recognition_v2": True,
                                           "not_in_the_schema": "dropped, never leaked"}}
     r = jc.build_result(inp)
     assert r["provenance"]["prompt_version"] == "p-0123456789ab" and r["provenance"]["schema_version"] == "v3"

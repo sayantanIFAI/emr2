@@ -342,5 +342,4 @@ def record_verified(sess: Any, f: dict[str, Any], md: dict[str, Any] | None, ass
         governed_value=governed_value(f, md), verification_method=method,
         confidence=confidence, evidence_state=getattr(assessment, "evidence_state", None),
         policy_id=policy_id, reviewer_id=reviewer_id,
-        model_stack={"recognition": "v2", "trocr": settings.trocr_model_id,
-                     "vlm": settings.vlm_model_id}, decision_trace=trace)
+        model_stack={"recognition": "v2", "vlm": settings.vlm_model_id}, decision_trace=trace)

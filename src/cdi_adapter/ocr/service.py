@@ -55,7 +55,7 @@ def ocr_document(document_id: str, *, force_engine: str | None = None) -> OcrRes
     # v2 always runs the region pass (a printed form can carry handwritten lines); only an
     # explicit rapidocr pass - the fast text the classifier reads - stays printed-only
     if settings.recognition_v2 and force_engine != "rapidocr":
-        # recognition v2: line regions -> TrOCR + Qwen per crop -> immutable evidence
+        # recognition v2: line regions -> Qwen per crop -> immutable evidence
         from ..recognition.pipeline import recognize_document
 
         with session_scope() as sess:

@@ -11,7 +11,7 @@ exported corrections. A correction never retrains anything and never rewrites a 
 ## What the OCR service emits (`GET /api/documents/{id}/field-records`)
 
 One record per extracted field: `prescription_id` (the document id), `doctor_id`, `field_id` (the fact id),
-`field_type`, `raw_crop_reference` (observation ids, crop hashes, boxes), `qwen_value`, `trocr_value`,
+`field_type`, `raw_crop_reference` (observation ids, crop hashes, boxes), `qwen_value`,
 `final_value`, `confidence`, `status` (`accepted` / `needs_review` / `corrected`).
 
 ## What the correction tool calls (`POST /api/corrections`)

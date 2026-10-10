@@ -6,7 +6,7 @@
 #
 # What it does: clone/update the repo -> .env from .env.runpod + a generated admin password (kept in
 # /workspace/secrets, never in git) -> pre-download the models -> start_all.sh (Postgres, Redis, object
-# store, model gateway Qwen2.5-VL-7B, OCR host RapidOCR+TrOCR, web app) -> smoke test.
+# store, model gateway Qwen2.5-VL-7B, OCR host RapidOCR, web app) -> smoke test.
 # The FHIR builder, dispatch and the review screens stay OFF (see .env.runpod).
 set -uo pipefail
 WS=/workspace
@@ -48,8 +48,7 @@ pip install -q huggingface_hub hf_transfer 2>&1 | tail -1
 cat > "$WS/prefetch_models.py" <<'PY'
 import os
 from huggingface_hub import snapshot_download
-for repo, extra in (("Qwen/Qwen2.5-VL-7B-Instruct", {"allow_patterns": ["*.json", "*.safetensors", "*.txt", "*.model", "*.jinja"]}),
-                    ("microsoft/trocr-base-handwritten", {"allow_patterns": ["*.json", "*.safetensors", "*.txt", "*.model"]})):
+for repo, extra in (("Qwen/Qwen2.5-VL-7B-Instruct", {"allow_patterns": ["*.json", "*.safetensors", "*.txt", "*.model", "*.jinja"]}),):
     p = snapshot_download(repo, **extra)
     print("ready", repo, p, flush=True)
 print("PREFETCH_DONE", flush=True)

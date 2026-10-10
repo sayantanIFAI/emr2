@@ -5,7 +5,7 @@ import json
 import re
 from pathlib import Path
 
-from cdi_adapter.recognition.bench_htr import _norm, score, wilson_lower
+from cdi_adapter.recognition.scoring import _norm, score, wilson_lower
 
 
 def _alnum(s: str) -> str:
@@ -37,7 +37,7 @@ def vocab_for(line_id: str, vocab: dict[str, list[tuple[str, set[str]]]]) -> lis
 
 def snap_to_vocab(text: str, words: list[str]) -> str:
     """Deterministic memory: a word one or two letters away from exactly ONE of the doctor's confirmed words becomes that word."""
-    from cdi_adapter.recognition.bench_htr import levenshtein
+    from cdi_adapter.recognition.scoring import levenshtein
 
     def fix(tok: str) -> str:
         core = tok.casefold()

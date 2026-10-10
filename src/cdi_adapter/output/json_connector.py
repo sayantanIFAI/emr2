@@ -190,7 +190,7 @@ def _applies(prep: dict[str, Any], test_text: str) -> bool:
     return t == ["all"] or (isinstance(t, list) and test_text in t)
 
 
-ENGINE_KEYS = ("vlm_configured", "vlm_served", "vlm_revision", "trocr", "trocr_revision", "trocr_device", "printed_ocr",
+ENGINE_KEYS = ("vlm_configured", "vlm_served", "vlm_revision", "printed_ocr",
                "pdf_renderer", "image_library", "qwen_line_mode", "recognition_v2")
 
 

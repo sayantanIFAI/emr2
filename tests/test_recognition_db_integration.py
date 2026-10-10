@@ -17,14 +17,6 @@ pytestmark = pytest.mark.skipif(not os.environ.get("CDI_DATABASE_URL"),
                                 reason="CDI_DATABASE_URL not set")
 
 
-@pytest.fixture(autouse=True)
-def _two_readers(monkeypatch):
-    """These tests are about the two-reader set-up; TrOCR is off by default in production."""
-    from cdi_adapter.config import settings
-
-    monkeypatch.setattr(settings, "trocr_enabled", True)
-
-
 @pytest.fixture()
 def sess_scope():
     from cdi_adapter.db import session_scope
@@ -83,7 +75,7 @@ def test_observation_is_append_only(sess_scope, fake_store):
     with sess_scope() as s:
         oid = repo.insert_observations(s, [{
             "document_id": did, "page_id": pg["id"], "line_key": "p1:l0",
-            "region_kind": "handwritten", "bbox": [1, 2, 3, 4], "engine": "trocr",
+            "region_kind": "handwritten", "bbox": [1, 2, 3, 4], "engine": "qwen2.5-vl",
             "engine_version": "t", "raw_text": "Telma 40", "raw_confidence": 0.8}])[0]
     for sql in ("UPDATE ocr_observation SET raw_text='x' WHERE id=:i",
                 "DELETE FROM ocr_observation WHERE id=:i"):
@@ -109,29 +101,18 @@ def test_verified_fact_is_append_only(sess_scope):
 
 # ---------------- recognition pipeline ----------------
 class _FakeHost:
-    def __init__(self, trocr_text):
-        self.trocr_text = trocr_text
-
     def rapid(self, png):
         from cdi_adapter.ocr.rapid import OcrLine
         return [OcrLine("Tab Telma 40 1-0-1", [80, 80, 460, 120], 0.97, [])]
 
-    def trocr(self, crops):
-        from cdi_adapter.recognition.engines import Reading
-        return [Reading("trocr", "fake-trocr", self.trocr_text, 0.8) for _ in crops]
 
-
-@pytest.mark.parametrize("trocr_text,qwen_text,state", [
-    ("Pregabalin 75", "Pregabalin 75", "agree"),
-    ("Pregabalin 75", "Pregabalin 150", "disagree"),
-])
-def test_recognize_document_states_and_evidence(sess_scope, fake_store, monkeypatch,
-                                                trocr_text, qwen_text, state):
+def test_recognize_document_states_and_evidence(sess_scope, fake_store, monkeypatch):
+    state, qwen_text = "single_engine", "Pregabalin 75"
     from cdi_adapter import repo
     from cdi_adapter.recognition import engines, ocrhost_client, pipeline
 
     did, _pg = _doc(sess_scope, fake_store)
-    ocrhost_client.set_ocr_host(_FakeHost(trocr_text))
+    ocrhost_client.set_ocr_host(_FakeHost())
     monkeypatch.setattr(engines.QwenLineEngine, "recognize", lambda self, crops: [
         engines.Reading("qwen2.5-vl", "fake-qwen", qwen_text, None) for _ in crops])
     try:
@@ -144,9 +125,9 @@ def test_recognize_document_states_and_evidence(sess_scope, fake_store, monkeypa
         obs = repo.list_current_observations(s, did)
     hw = [b for b in blocks if (b["recognition"] or {}).get("state") == state]
     assert hw and hw[0]["observation_ids"]
-    assert {o["engine"] for o in obs} >= {"rapidocr", "trocr", "qwen2.5-vl"}
+    assert {o["engine"] for o in obs} >= {"rapidocr", "qwen2.5-vl"}
     # a second run supersedes, never deletes
-    ocrhost_client.set_ocr_host(_FakeHost(trocr_text))
+    ocrhost_client.set_ocr_host(_FakeHost())
     try:
         pipeline.recognize_document(did)
     finally:

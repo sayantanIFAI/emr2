@@ -101,7 +101,7 @@ def test_a_swap_is_visible_as_an_sbom_diff():                                   
 def test_the_notice_lists_every_attribution_licence_and_the_models():                  # SW-S7 AC3
     n = L.notice(_report(_D("alpha", "1.2", "MIT"), _D("beta", "3", "Apache-2.0"), _D("gamma", "9", "LGPL-3.0")), POLICY)
     assert "- alpha 1.2: MIT" in n and "- beta 3: Apache-2.0" in n and "- gamma 9: LGPL-3.0" in n
-    assert "Qwen/Qwen2.5-VL-7B-Instruct" in n and "microsoft/trocr-base-handwritten" in n
+    assert "Qwen/Qwen2.5-VL-7B-Instruct" in n
 
 
 def test_a_model_licence_notice_line_reaches_the_notice_file(monkeypatch):
@@ -119,23 +119,16 @@ def test_the_registry_entries_are_complete_and_pinned():
         assert any(f.endswith(".safetensors") and meta["sha256"] and len(meta["sha256"]) == 64 for f, meta in m["files"].items())
         assert M.licence_problem(m) is None, (m["model_id"], M.licence_problem(m))
     assert M.champion("vlm")["model_id"] == "Qwen/Qwen2.5-VL-7B-Instruct"
-    assert M.entry("microsoft/trocr-base-handwritten")["status"] == "candidate"       # switched off, kept for a benchmark
 
 
 def test_the_default_settings_pass_the_gate():
-    # TrOCR is off by default: it is not loaded, so the gate does not need it
     assert M.check_settings(Settings(mlserve_backend="hf")) == [
         "Qwen/Qwen2.5-VL-7B-Instruct", "Qwen/Qwen2-VL-7B-Instruct"]
-    # switching it on while the registry still lists it only as a candidate is refused: promote it after a benchmark
-    with pytest.raises(M.ModelRefused, match="not champion"):
-        M.check_settings(Settings(mlserve_backend="hf", trocr_enabled=True))
 
 
 def test_a_model_that_is_not_registered_is_refused_naming_the_setting():                # SW-S2 AC1
     with pytest.raises(M.ModelRefused, match=r"not registered \(CDI_VLM_MODEL_ID\)"):
         M.check_settings(Settings(mlserve_backend="hf", vlm_model_id="Someone/Unregistered-VL"))
-    with pytest.raises(M.ModelRefused, match="CDI_TROCR_MODEL_ID"):
-        M.check_settings(Settings(mlserve_backend="hf", trocr_enabled=True, trocr_model_id="x/y"))     # unregistered: refused
 
 
 def test_a_model_with_no_licence_text_cannot_be_champion(tmp_path):                      # SW-S2 AC3
@@ -198,8 +191,8 @@ def test_changed_files_are_refused_even_when_the_pinned_revision_is_the_same(tmp
 
 
 def test_prepare_load_returns_the_pinned_revision_and_enforces_unless_switched_off(monkeypatch):
-    rev = M.pinned_revision("microsoft/trocr-base-handwritten")
-    assert M.prepare_load("microsoft/trocr-base-handwritten", setting_name="S", verify=False) == rev
+    rev = M.pinned_revision("Qwen/Qwen2.5-VL-7B-Instruct")
+    assert M.prepare_load("Qwen/Qwen2.5-VL-7B-Instruct", setting_name="S", verify=False) == rev
     with pytest.raises(M.ModelRefused):
         M.prepare_load("nobody/nothing", setting_name="CDI_VLM_MODEL_ID", verify=False)
     from cdi_adapter.config import settings
@@ -213,7 +206,6 @@ def test_results_name_the_model_revision_and_prompt_version():                  
 
     v = provenance.engine_versions("Qwen/Qwen2.5-VL-7B-Instruct")
     assert v["vlm_revision"] == M.pinned_revision("Qwen/Qwen2.5-VL-7B-Instruct") and len(v["vlm_revision"]) == 40
-    assert v["trocr_revision"] is None and v["trocr"] is None                    # switched off: no reader named
     assert v["pdf_renderer"].startswith("pypdfium2") and provenance.prompt_version().startswith("p-")
     fb = provenance.engine_versions("Qwen/Qwen2-VL-7B-Instruct")                          # the fallback answered
     assert fb["vlm_revision"] != v["vlm_revision"]

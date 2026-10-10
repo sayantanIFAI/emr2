@@ -57,8 +57,6 @@ point("object_store", setting="CDI_OBJECT_STORE", attr="object_store",
 point("job_queue", setting="CDI_QUEUE_BACKEND", attr="queue_backend",
       doc="the queue behind background jobs (Redis 7.2 or older, or Valkey: same protocol)")
 point("printed_ocr", setting="CDI_OCR_ENGINE", attr="ocr_engine", doc="reads printed text lines")
-point("handwriting_line", setting="CDI_TROCR_ENABLED", attr="handwriting_line_choice",
-      doc="reads handwriting line crops next to the VLM (TrOCR); 'off' = the VLM alone")
 point("vlm", setting="CDI_MLSERVE_BACKEND", attr="mlserve_backend",
       doc="the vision-language model server: stub (tests) | hf (transformers) | vllm")
 point("terminology", setting="CDI_TERMINOLOGY_PROVIDER", attr="terminology_provider",
@@ -147,10 +145,7 @@ choice("job_queue", "redis", lambda: _RedisProtocolQueue("redis"), requires=("re
 choice("job_queue", "valkey", lambda: _RedisProtocolQueue("valkey"), requires=("redis",), install="pip install redis", dist="redis")
 choice("printed_ocr", "rapidocr", lambda: __import__("cdi_adapter.ocr.rapid", fromlist=["x"]),
        requires=("rapidocr_onnxruntime",), install='pip install ".[ocr]"', dist="rapidocr-onnxruntime")
-choice("printed_ocr", "none", lambda: None, note="no printed-text reader: every line goes to the handwriting readers")
-choice("handwriting_line", "trocr", lambda: __import__("cdi_adapter.recognition.engines", fromlist=["x"]).TrOCREngine(),
-       requires=("transformers", "torch"), install='pip install ".[trocr]"', dist="transformers")
-choice("handwriting_line", "off", lambda: None, note="the VLM alone reads handwriting (every line goes to a person)")
+choice("printed_ocr", "none", lambda: None, note="no printed-text reader: every line goes to the vision-language model")
 choice("vlm", "stub", lambda: None, note="canned answers for tests")
 choice("vlm", "hf", lambda: None, requires=("transformers", "torch"), install='pip install ".[ml]"', dist="transformers")
 choice("vlm", "vllm", lambda: None, requires=("httpx",), dist="httpx", note="a separate `vllm serve` process")

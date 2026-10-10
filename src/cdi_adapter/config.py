@@ -176,29 +176,14 @@ class Settings(BaseSettings):
 
     # --- recognition v2 (ARCHITECTURE §15): regions -> independent engines -> evidence ---
     recognition_v2: bool = True           # False = legacy page-level VLM transcription (§5 S3)
-    # CPU OCR host (RapidOCR + TrOCR). Blank = run the engines in-process.
+    # CPU OCR host (RapidOCR). Blank = run RapidOCR in-process.
     ocrhost_url: str = ""                 # e.g. http://127.0.0.1:8079
     ocrhost_port: int = 8079
     ocrhost_timeout_s: float = 120.0
-    # OFF by default (2026-10-07): on real prescription photos from three doctors it agreed with Qwen on 3% of
-    # lines and produced fluent unrelated English (trocr-base-handwritten is trained on IAM sentences). While
-    # off, Qwen is the only handwriting reader: every handwriting line is single-reader (see validate/policy.py),
-    # checked against the reference lists (recognition/verify.py). Switch on only after a benchmark says so.
-    trocr_enabled: bool = False
-    trocr_model_id: str = "microsoft/trocr-base-handwritten"   # English (IAM); Bengali is E2-S10
-    trocr_max_new_tokens: int = 64
-    trocr_batch_size: int = 8
-    # where TrOCR runs: cpu | cuda | auto (cuda when a GPU is visible). The pod puts it on the same
-    # GPU as Qwen (about 1.3 GB); a missing GPU with "cuda" falls back to the CPU and says so.
-    trocr_device: str = "cpu"
     # RapidOCR on the GPU needs onnxruntime-gpu with a CUDA build that supports the card; if the
     # CUDA provider cannot start it falls back to the CPU and logs which one it is using.
     rapidocr_use_cuda: bool = False
 
-    @property
-    def handwriting_line_choice(self) -> str:
-        """The name of the handwriting-line reader in use, for the swap-point list ('trocr' | 'off')."""
-        return "trocr" if self.trocr_enabled else "off"
     # crop standard (IM-S3): what every handwriting crop looks like when it reaches a reader.
     # PLACEHOLDERS, not tuned: accuracy by crop size is not measured yet (the size of every crop is
     # recorded with the line so it can be). 0 turns the upscaling off.

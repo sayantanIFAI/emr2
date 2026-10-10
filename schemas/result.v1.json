@@ -39,12 +39,11 @@
         "schema_version": {"type": ["string", "null"]}, "prompt_version": {"type": ["string", "null"]},
         "engines": {
           "type": "object", "additionalProperties": false,
-          "required": ["vlm_configured", "vlm_served", "vlm_revision", "trocr", "trocr_revision", "trocr_device", "printed_ocr",
+          "required": ["vlm_configured", "vlm_served", "vlm_revision", "printed_ocr",
                        "pdf_renderer", "image_library", "qwen_line_mode", "recognition_v2"],
           "properties": {
             "vlm_configured": {"type": ["string", "null"]}, "vlm_served": {"type": ["string", "null"]},
-            "vlm_revision": {"type": ["string", "null"]}, "trocr": {"type": ["string", "null"]},
-            "trocr_revision": {"type": ["string", "null"]}, "trocr_device": {"type": ["string", "null"]},
+            "vlm_revision": {"type": ["string", "null"]},
             "printed_ocr": {"type": ["string", "null"]}, "pdf_renderer": {"type": ["string", "null"]},
             "image_library": {"type": ["string", "null"]}, "qwen_line_mode": {"type": ["string", "null"]},
             "recognition_v2": {"type": ["boolean", "null"]}

@@ -8,7 +8,7 @@
 #   - the Postgres cluster on the overlay,      [bootstrap_pod.sh]
 #     restored from /workspace/backup/cdi.dump
 #   - the model gateway (Qwen2.5-VL) process
-#   - the CPU OCR host (RapidOCR + TrOCR, recognition v2)
+#   - the CPU OCR host (RapidOCR, recognition v2)
 #   - the web app process
 #   - background agents: file listener + recovery. The FHIR builder and dispatch agents start ONLY
 #     when the owner sets CDI_START_FHIR=1 / CDI_START_DISPATCH=1 (they are off by default).

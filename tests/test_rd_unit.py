@@ -19,12 +19,6 @@ from cdi_adapter.recognition.disagreement import (
 from cdi_adapter.recognition.engines import Reading
 
 
-@pytest.fixture(autouse=True)
-def _two_readers(monkeypatch):
-    """These tests are about the two-reader set-up; TrOCR is off by default in production."""
-    monkeypatch.setattr(settings, "trocr_enabled", True)
-
-
 def R(engine, text, conf=None, error=None):
     return Reading(engine, "v1", text, conf, error=error)
 
@@ -33,8 +27,8 @@ def R(engine, text, conf=None, error=None):
 
 
 def test_ac5_two_reads_of_the_same_crop_that_differ_send_an_agreeing_line_to_review():
-    tro, q1, q2 = R("trocr", "Telma 40"), R("qwen2.5-vl", "Telma 40"), R("qwen2.5-vl", "Telma 80")
-    base = compare_engines([tro, q1])
+    ra, q1, q2 = R("reader-a", "Telma 40"), R("qwen2.5-vl", "Telma 40"), R("qwen2.5-vl", "Telma 80")
+    base = compare_engines([ra, q1])
     assert base.state == AGREE
     out = self_consistency(base, q1, q2)
     assert out.state == DISAGREE and out.display_text == "Telma 40"                 # the readings are untouched
@@ -43,23 +37,23 @@ def test_ac5_two_reads_of_the_same_crop_that_differ_send_an_agreeing_line_to_rev
 
 
 def test_two_consistent_reads_change_nothing_but_record_the_check():
-    tro, q1, q2 = R("trocr", "Telma 40"), R("qwen2.5-vl", "Telma 40"), R("qwen2.5-vl", "Telma 4O")
-    out = self_consistency(compare_engines([tro, q1]), q1, q2)
+    ra, q1, q2 = R("reader-a", "Telma 40"), R("qwen2.5-vl", "Telma 40"), R("qwen2.5-vl", "Telma 4O")
+    out = self_consistency(compare_engines([ra, q1]), q1, q2)
     assert out.state == AGREE and out.detail["self_consistency"]["consistent"] is True    # O vs 0 is the same number
 
 
 def test_a_failed_or_empty_second_read_changes_nothing():
-    base = compare_engines([R("trocr", "Telma 40"), R("qwen2.5-vl", "Telma 40")])
+    base = compare_engines([R("reader-a", "Telma 40"), R("qwen2.5-vl", "Telma 40")])
     assert self_consistency(base, R("qwen2.5-vl", "Telma 40"), R("qwen2.5-vl", "", error="timeout")) is base
     assert self_consistency(base, R("qwen2.5-vl", "Telma 40"), R("qwen2.5-vl", "   ")) is base
 
 
 def test_a_line_that_already_needs_a_person_is_not_changed_by_the_check():
-    single = compare_engines([R("trocr", "", error="host down"), R("qwen2.5-vl", "Telma 40")])
+    single = compare_engines([R("reader-a", "", error="host down"), R("qwen2.5-vl", "Telma 40")])
     assert single.state == SINGLE
     out = self_consistency(single, R("qwen2.5-vl", "Telma 40"), R("qwen2.5-vl", "Telma 90"))
     assert out.state == SINGLE and out.detail["self_consistency"]["consistent"] is False
-    disagree = compare_engines([R("trocr", "Telma 40"), R("qwen2.5-vl", "Telmikind 40")])
+    disagree = compare_engines([R("reader-a", "Telma 40"), R("qwen2.5-vl", "Telmikind 40")])
     assert self_consistency(disagree, R("qwen2.5-vl", "a"), R("qwen2.5-vl", "b")).state == DISAGREE
 
 
@@ -122,11 +116,6 @@ def _handwritten_page() -> bytes:
     return enc.tobytes()
 
 
-class _Host:
-    def trocr(self, crops):
-        return [R("trocr", "Telma 40", 0.9) for _ in crops]
-
-
 class _Qwen:
     calls: ClassVar[list[int]] = []
     scripts: ClassVar[list[str]] = ["Telma 40", "Telma 80"]
@@ -140,7 +129,6 @@ class _Qwen:
 def _run(monkeypatch, self_consistency_on: bool):
     _Qwen.calls = []
     monkeypatch.setattr(pipeline.storage, "get_bytes", lambda key: _handwritten_page())
-    monkeypatch.setattr(pipeline, "get_ocr_host", lambda: _Host())
     monkeypatch.setattr(pipeline, "QwenLineEngine", _Qwen)
     monkeypatch.setattr(settings, "qwen_self_consistency", self_consistency_on)
     monkeypatch.setattr(settings, "qwen_adjudication_enabled", False)
@@ -151,26 +139,25 @@ def _run(monkeypatch, self_consistency_on: bool):
 def test_with_the_check_off_there_is_one_qwen_read_per_crop(monkeypatch):
     blocks, obs = _run(monkeypatch, False)
     assert _Qwen.calls and len(_Qwen.calls) == 1
-    assert {o["engine"] for o in obs} == {"trocr", "qwen2.5-vl"}
-    assert blocks[0]["recognition"]["state"] == AGREE
+    assert {o["engine"] for o in obs} == {"qwen2.5-vl"}
+    assert blocks[0]["recognition"]["state"] == SINGLE                    # one reader: a person looks at every line
 
 
-def test_with_the_check_on_an_unstable_line_goes_to_review_and_the_second_read_is_kept_as_evidence(monkeypatch):
+def test_with_the_check_on_an_unstable_line_is_recorded_and_the_second_read_is_kept_as_evidence(monkeypatch):
     blocks, obs = _run(monkeypatch, True)
     assert len(_Qwen.calls) == 2                                          # a second read, different padding
     rec = blocks[0]["recognition"]
-    assert rec["state"] == DISAGREE and rec["detail"]["self_consistency"]["consistent"] is False
+    assert rec["state"] == SINGLE and rec["detail"]["self_consistency"]["consistent"] is False
     by_engine = {o["engine"]: o for o in obs}
-    assert set(by_engine) == {"trocr", "qwen2.5-vl", "qwen2.5-vl-b"}
+    assert set(by_engine) == {"qwen2.5-vl", "qwen2.5-vl-b"}
     assert by_engine["qwen2.5-vl"]["raw_text"] == "Telma 40" and by_engine["qwen2.5-vl-b"]["raw_text"] == "Telma 80"
     assert by_engine["qwen2.5-vl-b"]["crop_hash"] != by_engine["qwen2.5-vl"]["crop_hash"]   # a different crop
-    assert by_engine["trocr"]["crop_hash"] == by_engine["qwen2.5-vl"]["crop_hash"]
 
 
 def test_with_the_check_on_a_stable_line_is_unchanged(monkeypatch):
     monkeypatch.setattr(_Qwen, "scripts", ["Telma 40", "Telma 40"])
     blocks, _obs = _run(monkeypatch, True)
-    assert blocks[0]["recognition"]["state"] == AGREE
+    assert blocks[0]["recognition"]["state"] == SINGLE
     assert blocks[0]["recognition"]["detail"]["self_consistency"]["consistent"] is True
     monkeypatch.setattr(_Qwen, "scripts", ["Telma 40", "Telma 80"])
 

@@ -1,5 +1,5 @@
 """A labelled set of handwriting line crops: cut the lines out of real prescription photos, leave out the patient-name rows, and build a
-labelling page where a person types the true text. The labelled file is the input of ``recognition/bench_htr.py``
+labelling page where a person types the true text. The labelled file is the input of the scoring scripts (``scripts/bake_off_variants.py``)
 (``{"id", "crop", "truth"}`` per line).
 
 Nothing here reads handwriting. A line's machine reading (the pipeline's own) is kept in ``lines.jsonl`` for reference only and is hidden on

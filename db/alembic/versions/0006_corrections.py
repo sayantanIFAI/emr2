@@ -36,8 +36,7 @@ CREATE TABLE IF NOT EXISTS correction (
   doctor_id         uuid REFERENCES cn_practitioner(id),   -- NULL = doctor unknown (never guessed)
   field_type        text NOT NULL,                 -- the fact type: investigation_order | condition | advice | ...
   original_value    text,                          -- what the system held before the correction
-  qwen_value        text,                          -- what each engine read (NULL when not read)
-  trocr_value       text,
+  qwen_value        text,                          -- what the reader read (NULL when not read)
   corrected_value   text NOT NULL,
   confidence        numeric(5,4),
   prediction_status text,                          -- accepted | needs_review (before the correction)

@@ -137,67 +137,6 @@
    "notes": "Out-of-memory fallback; every fact it reads is held for review (docs/fallback-model.md)."
   },
   {
-   "role": "handwriting_line",
-   "model_id": "microsoft/trocr-base-handwritten",
-   "revision": "eaacaf452b06415df8f10bb6fad3a4c11e609406",
-   "status": "candidate",
-   "weights_format": "safetensors",
-   "trust_remote_code": false,
-   "files": {
-    "config.json": {
-     "sha256": "4c779f24e063c437c3dafd5b2e6c9f59f2fa2bd1dbb4ae6a30153bbbbf19e647",
-     "bytes": 4165
-    },
-    "generation_config.json": {
-     "sha256": "41149cdcffec4d657f32dfcddd9b208037f01286c9e07945c724908c58ed0193",
-     "bytes": 190
-    },
-    "merges.txt": {
-     "sha256": "1ce1664773c50f3e0cc8842619a93edc4624525b728b188a9e0be33b7726adc5",
-     "bytes": 456318
-    },
-    "model.safetensors": {
-     "sha256": "25a40cddc7e6120140a3d5b9e3dd3878a92ada7b4f312953ab22edc19c2a5acc",
-     "bytes": 1333384464
-    },
-    "preprocessor_config.json": {
-     "sha256": "2fcc0da9466ee00be0403b26027373039e032820ebac409e207b32e52e52119d",
-     "bytes": 224
-    },
-    "special_tokens_map.json": {
-     "sha256": "c611b1f7d416eb001ee4f293d903ea8c88e703463f1d403f1866a0352743fd00",
-     "bytes": 772
-    },
-    "tokenizer_config.json": {
-     "sha256": "5a1356884c6ae736a621841535264ba7c5bebd52f169258add2c48fcbb32d50a",
-     "bytes": 1118
-    },
-    "vocab.json": {
-     "sha256": "06b4d46c8e752d410213d9548eb27a54db70fda0319b6271fb8d59dead5e1cab",
-     "bytes": 898822
-    }
-   },
-   "checksum_basis": "sha256 computed on the deployed pod and equal to the hub's LFS sha256",
-   "licence": {
-    "name": "MIT",
-    "spdx": "MIT",
-    "text_file": "licences/MIT-trocr.txt",
-    "checked_on": "2026-10-06",
-    "source": "hub model card tag 'mit'; the repo ships no LICENSE file, so licences/ holds the standard text",
-    "commercial_use": true,
-    "notice_line": null
-   },
-   "trained_on": "as stated by the maker on the model card (not restated here): https://huggingface.co/microsoft/trocr-base-handwritten",
-   "served_by": "ocrhost, transformers, GPU (CDI_TROCR_DEVICE=cuda)",
-   "gpu_memory_gb": {
-    "value": 1.6,
-    "label": "MEASURED 2026-10-06 on an NVIDIA L4: growth of GPU memory when it loaded next to Qwen2.5-VL-7B (includes the CUDA context)"
-   },
-   "prompt_version": "computed at run time (provenance.prompt_version)",
-   "schema_version": "v3",
-   "notes": "SWITCHED OFF 2026-10-07: on real prescription photos from three doctors it agreed with Qwen on 3% of lines and wrote fluent unrelated English (trained on IAM sentences). Kept as a candidate; switch on only after a benchmark (recognition/bench_htr.py) says it adds value."
-  },
-  {
    "role": "vlm",
    "model_id": "Qwen/Qwen2.5-VL-32B-Instruct-AWQ",
    "revision": "66c370b74a18e7b1e871c97918f032ed3578dfef",

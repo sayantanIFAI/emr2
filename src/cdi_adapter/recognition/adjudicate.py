@@ -1,6 +1,6 @@
 """Qwen adjudication of an engine disagreement (cascade L8) - ADVISORY ONLY.
 
-Runs only after TrOCR and Qwen have read a line independently and disagreed. Qwen is then
+Runs only after two independent readings of a line have disagreed. Qwen is then
 shown the crop and BOTH recorded readings and asked which one the ink matches exactly.
 This call is deliberately anchored (it sees the candidates), so it is never evidence of
 agreement and it never changes the line's state: a disagreement still goes to review.

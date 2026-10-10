@@ -343,7 +343,7 @@ def _stage1(prog: DocProg, fn: str, raw: bytes, abha: str | None) -> None:
                 log.warning("prefetch_not_started", error=str(exc)[:200])
 
         # v2: the region pass always runs - printed lines keep their RapidOCR text and
-        # only handwritten/mixed/uncertain line crops go to TrOCR + Qwen (ARCHITECTURE §15).
+        # only handwritten/mixed/uncertain line crops go to Qwen (ARCHITECTURE §15).
         # legacy: only a page the classifier calls handwritten gets page-level VLM OCR
         if settings.recognition_v2 or (c.is_handwritten and settings.handwritten_uses_vlm):
             prog.stage("ocr", "running")

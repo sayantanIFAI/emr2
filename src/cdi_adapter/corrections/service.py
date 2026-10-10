@@ -59,7 +59,6 @@ class Context:
     original_value: str
     doctor_id: str | None = None
     qwen_value: str | None = None
-    trocr_value: str | None = None
     confidence: float | None = None
     prediction_status: str = "needs_review"
     crop_hash: str | None = None
@@ -75,22 +74,20 @@ def prediction_status(review_state: str | None) -> str:
             "corrected": "corrected"}.get(review_state or "", "needs_review")
 
 
-def engine_values(blocks: list[dict[str, Any]]) -> tuple[str | None, str | None]:
-    """(qwen, trocr) as read for the lines a fact came from (several lines are joined in order)."""
-    qwen, trocr = [], []
+def engine_value(blocks: list[dict[str, Any]]) -> str | None:
+    """What Qwen read for the lines a fact came from (several lines are joined in order)."""
+    qwen = []
     for b in blocks:
         eng = ((b.get("recognition") or {}).get("engines")) or {}
         if eng.get("qwen2.5-vl"):
             qwen.append(str(eng["qwen2.5-vl"]))
-        if eng.get("trocr"):
-            trocr.append(str(eng["trocr"]))
-    return (" ".join(qwen) or None), (" ".join(trocr) or None)
+    return " ".join(qwen) or None
 
 
 def build_field_record(fact: dict[str, Any], blocks: list[dict[str, Any]], doctor_id: str | None,
                        document_id: str, crop_hashes: dict[str, str] | None = None) -> dict[str, Any]:
     """The per-field record for downstream tools (the correction UI): one dict per extracted value."""
-    qwen, trocr = engine_values(blocks)
+    qwen = engine_value(blocks)
     obs = [str(o) for b in blocks for o in (b.get("observation_ids") or [])]
     hashes = sorted({(crop_hashes or {})[o] for o in obs if o in (crop_hashes or {})})
     return {
@@ -98,7 +95,7 @@ def build_field_record(fact: dict[str, Any], blocks: list[dict[str, Any]], docto
         "field_type": fact["fact_type"],
         "raw_crop_reference": {"observation_ids": obs, "crop_hashes": hashes,
                                "bboxes": [list(b["bbox"]) for b in blocks if b.get("bbox")]},
-        "qwen_value": qwen, "trocr_value": trocr,
+        "qwen_value": qwen,
         "final_value": fact.get("local_text"),
         "confidence": None if fact.get("confidence_overall") is None else round(float(fact["confidence_overall"]), 3),
         "status": prediction_status(fact.get("review_state")),
@@ -138,7 +135,7 @@ def load_context(sess: Any, document_id: str, fact_id: str) -> Context:
     return Context(
         document_id=str(document_id), fact_id=str(fact_id), field_type=fact["fact_type"],
         original_value=fact.get("local_text") or "", doctor_id=rec["doctor_id"],
-        qwen_value=rec["qwen_value"], trocr_value=rec["trocr_value"], confidence=rec["confidence"],
+        qwen_value=rec["qwen_value"], confidence=rec["confidence"],
         prediction_status=rec["status"],
         crop_hash=(rec["raw_crop_reference"]["crop_hashes"] or [None])[0],
         crop_ref={**rec["raw_crop_reference"], "page_id": str(first_page) if first_page else None},
@@ -208,7 +205,7 @@ def record_correction(sess: Any, ctx: Context, corrected_value: str, reviewer_id
     sess.execute(correction.insert().values(
         id=cid, document_id=ctx.document_id, fact_id=ctx.fact_id, doctor_id=ctx.doctor_id,
         field_type=ctx.field_type, original_value=ctx.original_value, qwen_value=ctx.qwen_value,
-        trocr_value=ctx.trocr_value, corrected_value=value, confidence=ctx.confidence,
+        corrected_value=value, confidence=ctx.confidence,
         prediction_status=ctx.prediction_status, crop_hash=ctx.crop_hash, crop_ref=ctx.crop_ref,
         reviewer_id=reviewer, model_stack=ctx.model_stack, created_at=now))
     learned = update_lexicon(sess, ctx, value, now) if ctx.doctor_id else None
@@ -306,7 +303,7 @@ def export_training(sess: Any, since: datetime | None = None, limit: int | None 
         q = q.limit(limit)
     return [{"correction_id": r["id"], "prescription_id": r["document_id"], "field_id": r["fact_id"],
              "doctor_id": r["doctor_id"], "field_type": r["field_type"], "original_value": r["original_value"],
-             "qwen_value": r["qwen_value"], "trocr_value": r["trocr_value"], "corrected_value": r["corrected_value"],
+             "qwen_value": r["qwen_value"], "corrected_value": r["corrected_value"],
              "confidence": None if r["confidence"] is None else float(r["confidence"]),
              "prediction_status": r["prediction_status"], "crop_hash": r["crop_hash"], "crop_ref": r["crop_ref"],
              "reviewer_id": r["reviewer_id"], "model_stack": r["model_stack"],

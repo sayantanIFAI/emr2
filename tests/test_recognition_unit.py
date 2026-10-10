@@ -58,24 +58,24 @@ def _r(engine, text, conf=0.9, error=None):
 
 
 def test_engines_agree_prefers_literal_text():
-    v = compare_engines([_r("trocr", "Telma 40 1-0-1"), _r("qwen2.5-vl", "Telma 4O 1-0-1", None)])
+    v = compare_engines([_r("reader-a", "Telma 40 1-0-1"), _r("qwen2.5-vl", "Telma 4O 1-0-1", None)])
     assert v.state == AGREE and v.display_text == "Telma 40 1-0-1"
 
 
 def test_number_difference_is_material_even_when_text_is_close():
     agree, det = compare_texts("Telma 40", "Telma 20")
     assert not agree and not det["numbers_equal"]
-    v = compare_engines([_r("trocr", "Telma 40"), _r("qwen2.5-vl", "Telma 20", None)])
+    v = compare_engines([_r("reader-a", "Telma 40"), _r("qwen2.5-vl", "Telma 20", None)])
     assert v.state == DISAGREE and "⟂" in v.display_text
 
 
 def test_single_and_no_reading():
-    assert compare_engines([_r("trocr", "Telma 40"), _r("qwen2.5-vl", "", None, "down")]).state == SINGLE
-    assert compare_engines([_r("trocr", "", None, "x"), _r("qwen2.5-vl", "", None, "y")]).state == NONE
+    assert compare_engines([_r("reader-a", "Telma 40"), _r("qwen2.5-vl", "", None, "down")]).state == SINGLE
+    assert compare_engines([_r("reader-a", "", None, "x"), _r("qwen2.5-vl", "", None, "y")]).state == NONE
 
 
 def test_qwen_prompt_never_carries_other_readings():
-    assert "{" not in QWEN_LINE_PROMPT and "trocr" not in QWEN_LINE_PROMPT.lower()
+    assert "{" not in QWEN_LINE_PROMPT and "reader-a" not in QWEN_LINE_PROMPT.lower()
 
 
 def test_marketed_strength():
@@ -201,11 +201,11 @@ def test_hierarchy_disagreement_and_grounding_veto():
     f = {"fact_type": "medication", "local_text": "Telma 20"}
     md = {"drug_text": "Telma", "strength_num": 20, "frequency_code": "1-0-1"}
     a = assess_fact(f, md, [_block("Telma 40 ⟂ Telma 20", "disagree",
-                                   {"trocr": "Telma 40 1-0-1", "qwen2.5-vl": "Telma 20 1-0-1"})], [])
+                                   {"reader-a": "Telma 40 1-0-1", "qwen2.5-vl": "Telma 20 1-0-1"})], [])
     codes = {c for _s, c, _m in a.findings}
     assert a.evidence_state == "disagree" and "engine-disagreement" in codes
     b = assess_fact(f, md, [_block("Tab Telma 40 1-0-1", "agree",
-                                   {"trocr": "Tab Telma 40 1-0-1"})], [])
+                                   {"reader-a": "Tab Telma 40 1-0-1"})], [])
     assert "grounding-failed" in {c for _s, c, _m in b.findings}
 
 
@@ -261,7 +261,7 @@ def test_adjudication_never_resolves_disagreement():
     md = {"drug_text": "Pregabalin", "strength_num": 75, "frequency_code": "0-0-1"}
     blk = {"text": "Pregabalin 75 0-0-1 ⟂ Pregabalin 150 0-0-1", "observation_ids": [],
            "recognition": {"state": "disagree",
-                           "engines": {"trocr": "Pregabalin 75 0-0-1",
+                           "engines": {"reader-a": "Pregabalin 75 0-0-1",
                                        "qwen2.5-vl": "Pregabalin 150 0-0-1"},
                            "adjudication": {"verdict": "prefers", "preferred_index": 0,
                                             "preferred_text": "Pregabalin 75 0-0-1"}}}
