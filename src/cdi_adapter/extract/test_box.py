@@ -35,22 +35,44 @@ SCALES = (1.0, 1.6, 2.4)
 MIN_SIZES = 2                    # of the three sizes must list the test
 PLAIN = "Transcribe exactly the handwriting in this image, letter by letter, line by line."
 LIST = ("This is a box from a doctor's handwritten prescription listing laboratory tests to be done (separated by commas or slashes). Write each test exactly "
-        "as it is written, one per line. Write only what is there. Common ones: CBC, ESR, CRP, TSH, FT4, FT3, IgE, RBS, FBS, PPBS, HbA1c, LFT, KFT, Urine RE.")
+        "as it is written, one per line. Write only what is there. A tick mark before a line is not a letter. Common ones: CBC, ESR, CRP, TSH, FT4, FT3, IgE, RBS, FBS, "
+        "PPBS, HbA1c, LFT, KFT, Urine RE, Ca2+ (calcium), Vit D3, Vit B12, Uric acid, USG, X-ray.")
 
 
 def _key(s: str | None) -> str:
     return re.sub(r"[^a-z0-9]", "", (s or "").casefold())
 
 
+def _entry_blocks(it: Any, labels: dict[str, dict[str, Any]], blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The page lines an investigation entry stands on: the lines the whole-page answer cited, else the lines whose text is mostly contained in the entry's
+    letters ("?it D3" and "un?c ac?d" for "B/F -> +, Vit D3, Uric acid"; "?SGT[whole]" and "Abdocmem" for "VSGT (whole Abdomen)"). The answer often cites
+    nothing for a line of tests, and the line is then found by what it says."""
+    cited = [labels[str(lab)] for lab in ((it.get("evidence") if isinstance(it, dict) else None) or []) if str(lab) in labels]
+    if cited:
+        return cited
+    ek = _key(it.get("text") if isinstance(it, dict) else str(it))
+    if len(ek) < 4:
+        return []
+    out = []
+    for b in blocks:
+        bk = _key(str(b.get("text") or ""))
+        if len(bk) < 4 or not _bbox(b):
+            continue
+        m = difflib.SequenceMatcher(None, ek, bk)
+        hit = sum(x.size for x in m.get_matching_blocks())
+        if hit / len(bk) >= 0.75:
+            out.append(b)
+    return out
+
+
 def _boxes(blocks: list[dict[str, Any]], payload: dict[str, Any]) -> list[tuple[int, int, int, int]]:
-    """The boxes of handwriting the whole-page answer cited for the tests it listed: its cited lines (nearby lines of the same box included), grouped by
-    vertical closeness."""
+    """The boxes of handwriting the tests listed by the whole-page answer stand on (``_entry_blocks``), the lines in and right around them included
+    (a superscript read as a stray line: "Ca2+" as "Ca??"), grouped by vertical closeness."""
     labels = F.blocks_by_label(blocks)
     cited = []
     for it in payload.get("investigations") or []:
-        for lab in (it.get("evidence") if isinstance(it, dict) else None) or []:
-            b = labels.get(str(lab))
-            bx = _bbox(b) if b else None
+        for b in _entry_blocks(it, labels, blocks):
+            bx = _bbox(b)
             if bx:
                 cited.append(bx)
     if not cited:
@@ -65,7 +87,27 @@ def _boxes(blocks: list[dict[str, Any]], payload: dict[str, Any]) -> list[tuple[
             groups.append([r])
     out = []
     for g in groups[:3]:
-        out.append((min(r[0] for r in g), min(r[1] for r in g), max(r[2] for r in g), max(r[3] for r in g)))
+        box = (min(r[0] for r in g), min(r[1] for r in g), max(r[2] for r in g), max(r[3] for r in g))
+        pad = int(0.8 * mean_h)
+        grown = (box[0] - pad, box[1] - pad, box[2] + pad, box[3] + pad)
+        near = [bx for bx in (_bbox(b) for b in blocks) if bx and bx[0] < grown[2] and bx[2] > grown[0] and bx[1] < grown[3] and bx[3] > grown[1]
+                and (bx[3] - bx[1]) <= 3 * mean_h]
+        if near:
+            box = (min(box[0], *(r[0] for r in near)), min(box[1], *(r[1] for r in near)), max(box[2], *(r[2] for r in near)), max(box[3], *(r[3] for r in near)))
+        out.append(box)
+    merged = True
+    while merged and len(out) > 1:                    # two boxes that overlap once their neighbouring lines are in are one box
+        merged = False
+        for i in range(len(out)):
+            for j in range(i + 1, len(out)):
+                p, q = out[i], out[j]
+                if p[0] < q[2] and q[0] < p[2] and p[1] < q[3] and q[1] < p[3]:
+                    out[i] = (min(p[0], q[0]), min(p[1], q[1]), max(p[2], q[2]), max(p[3], q[3]))
+                    del out[j]
+                    merged = True
+                    break
+            if merged:
+                break
     return out
 
 
@@ -125,10 +167,12 @@ def _distance(a: str, b: str) -> int:
 
 
 def _supported(name: str, tokens: list[str]) -> bool:
-    """Some piece of the unhinted plain reading is within a third of the test's letters of it (rounded up): "FTU" for FT4, "TSU" for TSH, "TgE" for IgE."""
+    """Some piece of the unhinted plain reading (a word, or up to four words run together: "usg whole abdomen") is within a third of the test's letters of
+    it (rounded up): "FTU" for FT4, "TSU" for TSH, "TgE" for IgE, "VSGT whole Abdomen" for "USG whole abdomen"."""
     k = _key(name)
     allowed = -(-len(k) // 3)
-    return any(_distance(k, t) <= allowed for t in tokens)
+    pieces = list(tokens) + ["".join(tokens[i:i + n]) for n in (2, 3, 4) for i in range(len(tokens) - n + 1)]
+    return any(_distance(k, t) <= allowed for t in pieces)
 
 
 def reread(client: Any, image: bytes, blocks: list[dict[str, Any]], payload: dict[str, Any]) -> dict[str, Any] | None:
@@ -177,8 +221,8 @@ def reread(client: Any, image: bytes, blocks: list[dict[str, Any]], payload: dic
     labels = F.blocks_by_label(blocks)
 
     def in_box(it: Any) -> bool:
-        for lab in (it.get("evidence") if isinstance(it, dict) else None) or []:
-            bx = _bbox(labels.get(str(lab)) or {})
+        for blk in _entry_blocks(it, labels, blocks):
+            bx = _bbox(blk)
             if bx:
                 cx, cy = (bx[0] + bx[2]) / 2, (bx[1] + bx[3]) / 2
                 if any(b[0] <= cx <= b[2] and b[1] <= cy <= b[3] for b in boxes):

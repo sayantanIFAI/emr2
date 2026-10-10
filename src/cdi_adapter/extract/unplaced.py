@@ -84,10 +84,9 @@ def candidates(reads: list[str], department: str | None = None) -> list[str]:
         if len(key) < 6 or not key.isalpha():
             continue
         for k in ks:
-            if k[0] != key[0]:
-                continue
             r = difflib.SequenceMatcher(None, k, key).ratio()
-            if r >= MIN_ALIKE and r > best.get(m.canonical, 0.0):
+            # the same first letter, or a reading that is almost all of the name (a tick mark joined to the first letter: "VSGT whole Abdomen" for "USG whole abdomen")
+            if (k[0] == key[0] and r >= MIN_ALIKE or r >= 0.8) and r > best.get(m.canonical, 0.0):
                 best[m.canonical] = r
     out = [c for c, _r in sorted(best.items(), key=lambda kv: -kv[1])][:MAX_OPTIONS]
     for name in _dept.typical(department):

@@ -86,3 +86,35 @@ def test_a_page_with_no_cited_box_or_an_unreadable_one_is_left_alone():
     before = [dict(i) for i in p["investigations"]]
     assert T.reread(Reader(["", "", ""], plain=""), IMAGE, BLOCKS, p) is None
     assert p["investigations"] == before
+
+
+# the OCR lines of a real page (the doctor ticked two lines: "USG (whole Abdomen)" and "B/F -> Ca2+, Vit D3, Uric acid"); the answer cited no line for either
+USG_BLOCKS = [
+    {"text": "Epigastric pain", "bbox": [93, 909, 327, 977]}, {"text": "Cap.", "bbox": [385, 949, 452, 988]}, {"text": "?SGT[whole]", "bbox": [38, 1013, 234, 1050]},
+    {"text": "udiliv(300)", "bbox": [496, 1011, 684, 1049]}, {"text": "Abdocmem", "bbox": [160, 1046, 312, 1088]}, {"text": "√ B/F →", "bbox": [44, 1081, 165, 1138]},
+    {"text": "Hepamerz", "bbox": [512, 1103, 672, 1142]}, {"text": "Ca??", "bbox": [181, 1110, 270, 1139]}, {"text": "un?c ac?d", "bbox": [263, 1145, 373, 1169]},
+    {"text": "?it D3", "bbox": [148, 1150, 257, 1182]}, {"text": "1 month", "bbox": [740, 1156, 893, 1187]},
+]
+
+
+def usg_payload():
+    return {"investigations": ["VSGT (whole Abdomen)", "B/F → +, Vit D3, Uric acid"]}
+
+
+def test_a_line_of_tests_the_answer_did_not_cite_is_found_by_what_it_says():
+    boxes = T._boxes(USG_BLOCKS, usg_payload())
+    assert len(boxes) == 1
+    x0, y0, x1, y1 = boxes[0]
+    assert x0 <= 38 and y0 <= 1013 and x1 >= 373 and y1 >= 1182 and x1 < 600           # both ticked lines, and not the medicine column to the right
+
+
+def test_a_tick_joined_to_the_first_letter_and_a_superscript_lost_are_read_from_the_enlarged_box():
+    p = usg_payload()
+    plain = ["VSGT (whole Abdomen)\n√ B/F → Ca??, Vit D3, Uric acid", "USG (whole Abdomen)\n√ B/F → Ca2+, Vit D3, Uric acid", "USG (whole Abdomen)\n√ B/F → Ca2+, Vit D3, Unic acid"]
+    listed = ["USG (Whole Abdomen)\nCa2+, Vit D3, Uric acid"] * 3
+    ok2, big = cv2.imencode(".png", np.full((1300, 1000, 3), 255, np.uint8))
+    info = T.reread(Reader(listed, plain=plain), big.tobytes(), USG_BLOCKS, p)
+    texts = [i["text"] if isinstance(i, dict) else i for i in p["investigations"]]
+    assert info and {"Calcium", "Ca2+"} & set(info["accepted"]) and any("USG" in a for a in info["accepted"]) and any("Uric" in a for a in info["accepted"])
+    assert not any("VSGT" in t or "B/F" in t for t in texts)                                # the misread pieces are gone
+    assert any("Ca2" in t or "Calcium" in t for t in texts) and any("USG" in t for t in texts) and any("Vit D3" in t for t in texts)
