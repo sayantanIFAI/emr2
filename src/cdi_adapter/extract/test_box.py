@@ -50,19 +50,23 @@ def _entry_blocks(it: Any, labels: dict[str, dict[str, Any]], blocks: list[dict[
     cited = [labels[str(lab)] for lab in ((it.get("evidence") if isinstance(it, dict) else None) or []) if str(lab) in labels]
     if cited:
         return cited
-    ek = _key(it.get("text") if isinstance(it, dict) else str(it))
-    if len(ek) < 4:
+    words = _words(it.get("text") if isinstance(it, dict) else str(it))
+    if not words:
         return []
     out = []
     for b in blocks:
-        bk = _key(str(b.get("text") or ""))
-        if len(bk) < 4 or not _bbox(b):
+        bw = _words(str(b.get("text") or ""))
+        if not bw or not _bbox(b):
             continue
-        m = difflib.SequenceMatcher(None, ek, bk)
-        hit = sum(x.size for x in m.get_matching_blocks())
-        if hit / len(bk) >= 0.75:
+        hit = sum(1 for w in bw if any(difflib.SequenceMatcher(None, w, e).ratio() >= 0.75 for e in words))
+        if hit / len(bw) >= 0.66:
             out.append(b)
     return out
+
+
+def _words(text: str) -> list[str]:
+    """The words of a line (a "?" the reader put for a letter it could not read is taken out: "un?c" is "unc"), lower case; one-letter pieces are left out."""
+    return [w.casefold() for w in re.findall(r"[A-Za-z0-9]+", (text or "").replace("?", "")) if len(w) >= 3 or (len(w) == 2 and any(ch.isdigit() for ch in w))]
 
 
 def _boxes(blocks: list[dict[str, Any]], payload: dict[str, Any]) -> list[tuple[int, int, int, int]]:

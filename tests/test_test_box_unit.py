@@ -81,7 +81,7 @@ def test_a_test_listed_at_only_one_size_is_not_accepted():
 
 
 def test_a_page_with_no_cited_box_or_an_unreadable_one_is_left_alone():
-    assert T.reread(Reader(["CBC"]), IMAGE, BLOCKS, {"investigations": [{"text": "CBC", "evidence": []}]}) is None
+    assert T.reread(Reader(["CBC"]), IMAGE, BLOCKS, {"investigations": [{"text": "Hemogram profile", "evidence": []}]}) is None       # no line says that: no box
     p = payload()
     before = [dict(i) for i in p["investigations"]]
     assert T.reread(Reader(["", "", ""], plain=""), IMAGE, BLOCKS, p) is None
