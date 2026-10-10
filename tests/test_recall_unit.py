@@ -34,3 +34,11 @@ def test_lab_report_pad_with_medicines_and_review_line():
 def test_real_lab_report_with_a_reference_range_stays():
     page = B("Reference range", "Hb 12.5 g/dL 12-16", "CBC", "Tab", "Review after")
     assert recall.reroute("lab_report", page) == (None, "")
+
+
+def test_a_page_typed_other_is_handled_as_a_prescription_even_with_no_test_in_its_text():
+    # MEASURED: a page cropped to its clinical part (no letterhead, no names) was typed "other" and every step was skipped: 0 tests
+    new, why = recall.reroute("other", B("Bp 120/80", "Cap Beta 10 x 10d", "Tab Omnicc 1 BD"))
+    assert new == "prescription" and "prescriptions" in why
+    assert recall.reroute("other", B("Operative note", "Name of the procedure: hernia repair"))[0] is None      # it says what it is
+    assert recall.reroute("prescription", B("anything"))[0] is None

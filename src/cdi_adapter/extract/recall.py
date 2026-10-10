@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from ..config import settings
 from . import not_lab, test_cluster
 from .test_names import looks_like_medicine
 
@@ -30,6 +31,11 @@ def reroute(doc_type: str | None, blocks: list[dict[str, Any]] | None) -> tuple[
     page = " ".join(texts)
     if _OPERATIVE_WORDS.search(page):
         return None, ""                                    # it says it is an operative note
+    if doc_type == "other" and settings.upload_assume_prescription:
+        # the admin screen takes prescriptions. A page cropped to its clinical part (no letterhead, no names) is typed "other" by the classifier, and every
+        # prescription step was skipped: a doctor's box of tests ("TSH/FT4, CBC, ESR, IgE, RBS, CRP") reached nobody. It is handled as a prescription;
+        # whatever is found is still checked by a person.
+        return "prescription", "typed other, but this screen takes prescriptions: a page with no letterhead or names is handled as one"
     found = [f for f in test_cluster.scan(blocks) if f.why in ("exact", "marker", "beside") and not not_lab.entry_reason(f.test)]    # laboratory tests only
     meds = sum(1 for t in texts if t.strip() and looks_like_medicine(t))
     cue = bool(_RX_CUES.search(page))

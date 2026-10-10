@@ -574,6 +574,16 @@ def _check_the_name(client: Any, image: bytes, blocks: list[dict[str, Any]], pay
     first = first if isinstance(first, str) and first.strip() and first.strip().casefold() not in ("null", "none") else None
     from ..names import clean_name
 
+    from ..names import name_on_page
+
+    if first is None and not name_on_page(blocks):
+        # the whole-page answer found no name and the page text has no label, title or age: no patient name is written here (a page cropped to its
+        # clinical part). The words of the doctor's handwriting at the top ("Atomy", "Chris Henke") are not read as a name.
+        payload["patient"]["name"] = None
+        payload["_name_reads"] = []
+        payload["_name_note"] = "no patient name is written on this page"
+        return
+
     first = clean_name(first)                         # "Mrs.Sumita Gupta Gangopadhyay yrs Female": the age and sex are not part of the name
     payload["patient"]["name"] = first
     if first and org_like(first):                     # the clinic's name on the letterhead was taken for the patient: it is not a name
@@ -590,7 +600,7 @@ def _check_the_name(client: Any, image: bytes, blocks: list[dict[str, Any]], pay
         return
     chosen, agree, total = consensus([first or "", *reads])
     payload["_name_agreement"] = [agree, total]
-    if chosen and ((first is None) or (agree >= 3 and not alike(first, chosen, 0.85))):
+    if chosen and ((first is None and agree >= 2) or (first is not None and agree >= 3 and not alike(first, chosen, 0.85))):
         payload["patient"]["name"] = chosen                 # no usable first reading, or most readings agree on a different spelling
     # the readings from the name line's own enlarged crops decide over the whole-page reading: when the same spelling (exactly, title
     # ignored) is read by MORE THAN HALF of them it is the shown name, even when it is close to the first reading. MEASURED on a real

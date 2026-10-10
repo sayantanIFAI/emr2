@@ -33,3 +33,12 @@ def test_a_glued_age_and_sex_after_the_surname_are_cut_off():
     assert resolve_llm.name_from_transcription("Mrs.Sumita Gupta Gangopadhyay./72yrs/Female") == "Sumita Gupta Gangopadhyay"
     assert clean_name("Sumita Gupta Gangopadhyay Yrsfemale") == "Sumita Gupta Gangopadhyay"
     assert clean_name("Mrs.Sumita Gupta Gangopadhyay./72yrs/Female") == "Mrs. Sumita Gupta Gangopadhyay."
+
+
+def test_a_page_with_no_label_title_or_age_has_no_patient_name():
+    from cdi_adapter.names import name_on_page
+
+    # MEASURED on a real page cropped to its clinical part: the doctor's words at the top ("Atomy", "Chris Henke") are not a patient's name
+    assert not name_on_page([{"text": "Atomy"}, {"text": "? Chris Henke"}, {"text": "Bp 120/80"}, {"text": "TSH/FT4, CBC, ESR"}])
+    assert name_on_page([{"text": "Name : Ahmed"}]) and name_on_page([{"text": "Mrs.Sumita Gupta"}]) and name_on_page([{"text": "74/F"}])
+    assert name_on_page([{"text": "Age: 6 Year"}]) and not name_on_page([])

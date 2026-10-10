@@ -125,3 +125,15 @@ def surname_options(readings: list[str], limit: int = 7) -> list[str]:
     listed = [s for s in dict.fromkeys(ranked) if s.casefold() not in have][: max(0, limit - len(plain))]
     return plain + listed
 
+
+
+_AGE_CUE = r"(?<![0-9])\d{1,3}\s*(?:yrs?|y|years?)?\s*[/,]\s*[mf](?![a-z])|(?<![0-9])\d{1,3}\s*(?:yrs?|years?)(?![a-z])"
+_NAME_CUE = re.compile(r"(?i)(?<![a-z])(?:name|patient|pt\.?|nm)(?![a-z])|(?<![a-z])(?:mr|mrs|ms|miss|smt|shri|sri|master|baby|kum|late)(?![a-z])\.?|"
+                       r"(?<![a-z0-9])age(?![a-z])|" + _AGE_CUE, re.I)
+
+
+def name_on_page(blocks: list[dict] | None) -> bool:
+    """True when the page's text shows a place where a patient's name is written: a "Name" / "Patient" label, a title (Mr, Mrs, Smt ...), an age or an
+    age and sex ("74/F"). A page cropped to its clinical part has none of these, and no name is read from it: words of the doctor's handwriting at the top
+    of such a page ("Atomy", "Chris Henke") are not a patient's name. Missing is safer than invented."""
+    return any(_NAME_CUE.search(str(b.get("text") or "")) for b in blocks or [])
