@@ -81,7 +81,7 @@ def test_a_test_name_inside_a_long_line_of_other_words_is_weak_evidence_not_a_te
     # MEASURED on a real page: the clinic's footer "?oscopy ?NT Endoscopy ? Ultras?nography ? Echocardiography ... ECG" gave ECG
     footer = B("Endoscopy Ultrasonography Echocardiography ECG Colonoscopy Treadmill Spirometry", 138, 1491, 1123, 1511)
     assert T.scan([footer]) == []
-    assert [f.test for f in T.scan([footer, B("CBC, LFT", 140, 1520, 300, 1550)])] == ["Echocardiography", "ECG", "CBC", "LFT"]       # beside tests it counts (page order); the footer names are then rejected by extract/not_lab.py as "part of the clinic's printed list of services"
+    assert [f.test for f in T.scan([footer, B("CBC, LFT", 140, 1520, 300, 1550)])] == ["Endoscopy", "Echocardiography", "ECG", "Colonoscopy", "Spirometry", "CBC", "LFT"]       # beside tests it counts (page order); the footer names are then rejected by extract/not_lab.py as "part of the clinic's printed list of services"
     assert [f.test for f in T.scan([B("CBC CRP LFT KFT TSH FT4", 3, 100, 400, 130)])] == ["CBC", "CRP", "LFT", "KFT", "TSH", "FT4"]   # a real list is taken
 
 

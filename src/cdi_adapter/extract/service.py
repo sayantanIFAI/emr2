@@ -1104,6 +1104,21 @@ def extract_document(document_id: str, *, patient_id: str | None = None,
                 log.warning("test_box_failed", document_id=document_id, error=str(exc)[:160])
             if tbx:
                 names = [one for io in payload.get("investigations") or [] for one in split_tests(_coded_text(io)[0])]
+        if settings.unplaced_choice:
+            try:
+                from . import unplaced
+                chosen = steps.run("unplaced", unplaced.reread, client, image, focus_blocks, payload)
+            except Exception as exc:  # noqa: BLE001 - an extra: never cost the document
+                chosen = {}
+                log.warning("unplaced_failed", document_id=document_id, error=str(exc)[:160])
+        try:
+            from . import unplaced as _unplaced
+            payload["investigations"], covered = _unplaced.drop_covered(payload.get("investigations") or [])
+            if covered:
+                payload["_covered"] = covered              # entries that only repeated tests already listed on their own ("Br Av TSH FT4")
+        except Exception as exc:  # noqa: BLE001
+            log.warning("drop_covered_failed", document_id=document_id, error=str(exc)[:160])
+        names = [one for io in payload.get("investigations") or [] for one in split_tests(_coded_text(io)[0])]
         if settings.checklist_marks_enabled:
             # a PRINTED CHECKLIST (a menu of tests the doctor strikes / ticks / circles): looked for in the text lines first, and only a page that has such a menu
             # is looked at for pen marks. The marked names are the orders; the unmarked names of the menu are not orders.
