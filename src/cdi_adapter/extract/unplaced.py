@@ -30,6 +30,7 @@ SHUFFLES = 3
 MIN_VOTES = 5                    # of 9 answers
 MIN_ALIKE = 0.5                  # the readings must be at least this alike a name (letters only, same first letter) for it to be offered
 MAX_OPTIONS = 4
+MAX_ADVICE = 4                    # advice lines looked at for an unreadable investigation
 MAX_DEPARTMENT = 4                # of the department's usual names added to the offer
 PLAIN = "Transcribe exactly the handwriting in this image, letter by letter, on one line."
 _HEADING = re.compile(r"(?i)^(?:adv(?:ice|ised)?|inv(?:estigations?)?|ix|rx|test(?:s)?)$")
@@ -60,6 +61,10 @@ def drop_covered(investigations: list[Any]) -> tuple[list[Any], list[str]]:
         words = re.findall(r"[A-Za-z0-9+]+", text)
         tests = [w for w in words if placed_text(w) is not None]
         rest = [w for w in words if placed_text(w) is None]
+        if not tests and words and len(words) <= 3 and all(len(w) <= 3 for w in words) and any("?" in text or _HEADING.match(w) for w in words) \
+                and any(placed_text(_text_of(o)) is not None for o in investigations if o is not it):
+            dropped.append(text)                           # a heading read badly ("Br ?v", "Adv") with real tests listed beside it
+            continue
         if (len(tests) >= 2 and len(words) > len(tests) and all(_key(w) in own for w in tests)
                 and all(len(w) <= 3 or _HEADING.match(w) for w in rest) and _key(text) not in {_key(w) for w in tests}):
             dropped.append(text)
@@ -143,7 +148,9 @@ def reread(client: Any, image: bytes, blocks: list[dict[str, Any]], payload: dic
     not_lab = payload.get("_not_lab") or {}
     chosen: dict[str, str] = {}
     inv = list(payload.get("investigations") or [])
-    for i, it in enumerate(inv):
+    advice = [a for a in (payload.get("advice") or []) if _qualifies(_text_of(a).strip(), not_lab)][:MAX_ADVICE]       # an unreadable word among the advice
+    for i, it in enumerate([*inv, *advice]):
+        from_advice = i >= len(inv)
         text = _text_of(it).strip()
         if not _qualifies(text, not_lab):
             continue
@@ -177,7 +184,11 @@ def reread(client: Any, image: bytes, blocks: list[dict[str, Any]], payload: dic
         if ranked and ranked[0][1] >= MIN_VOTES and ranked[0][0] in options and (len(ranked) == 1 or ranked[0][1] > 2 * ranked[1][1]):
             name, n = ranked[0]
             chosen[text] = name
-            inv[i] = {**it, "text": name, "source": "choice_vote"} if isinstance(it, dict) else {"text": name, "evidence": [], "source": "choice_vote"}
+            if from_advice:
+                if not any(_key(_text_of(x)) == _key(name) for x in inv):
+                    inv.append({"text": name, "evidence": [], "source": "choice_vote"})      # the advice line stays as written; the test is added to the tests
+            else:
+                inv[i] = {**it, "text": name, "source": "choice_vote"} if isinstance(it, dict) else {"text": name, "evidence": [], "source": "choice_vote"}
             payload.setdefault("_text_scan", {})[name] = (f"written as '{text}' (read as {', '.join(repr(r) for r in reads[:3])}); chosen from a short list by looking at the line"
                                                           f"{' (a usual investigation of ' + department + ')' if department and name in _dept_typical(department) else ''}: "
                                                           f"{n} of {total} answers")

@@ -100,3 +100,21 @@ def test_a_covered_entry_in_the_advice_list_is_not_made_a_test_again():
     kinds = [(a["fact_type"], a["local_text"]) for a in after.added]
     assert ("advice", "Br Av TSH FT4") in kinds and ("investigation_order", "Br Av TSH FT4") not in kinds
     assert ("investigation_order", "TSH") in kinds and ("investigation_order", "FT4") in kinds
+
+
+def test_an_unreadable_investigation_filed_under_advice_is_chosen_and_added_to_the_tests():
+    # MEASURED: the model put "Lang?neseid?" under advice, not under investigations, and Laryngoscopy was missed
+    p = {"investigations": [{"text": "TSH"}], "advice": [{"text": "Lang?erseid?"}, {"text": "Plenty of fluids"}]}
+    got = U.reread(Chooser("Laryngoscopy"), IMAGE, BLOCKS, p)
+    assert got == {"Lang?erseid?": "Laryngoscopy"}
+    assert [i["text"] for i in p["investigations"]] == ["TSH", "Laryngoscopy"] and p["advice"][0]["text"] == "Lang?erseid?"      # the advice line is untouched
+    assert "Laryngoscopy" in p["_corroborated"]
+    q = {"investigations": [], "advice": [{"text": "Lang?erseid?"}]}
+    assert U.reread(Chooser("none of these"), IMAGE, BLOCKS, q) == {} and q["investigations"] == []                          # nothing settles: nothing added
+
+
+def test_a_garbled_heading_beside_real_tests_is_dropped_but_a_lone_short_name_is_kept():
+    kept, dropped = U.drop_covered([{"text": "Br ?v"}, {"text": "TSH"}, {"text": "FT4"}])
+    assert dropped == ["Br ?v"] and [i["text"] for i in kept] == ["TSH", "FT4"]
+    kept, dropped = U.drop_covered([{"text": "Hb"}, {"text": "TSH"}])
+    assert dropped == []                                                       # "Hb" has no "?" and is not a heading word
