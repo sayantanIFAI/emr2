@@ -322,6 +322,9 @@ class Settings(BaseSettings):
     followup_second_look: bool = True
     lab_tests_only: bool = False         # OWNER'S DECISION (2026-10): MRI, CT, USG, echo, EEG, ECG, X-ray and OPG are tests of this system and are listed. ON would reject imaging / ECG / EEG entries
                                          # the lab lists do not place (extract/not_lab.py); physiotherapy, results ("MRI Brain - N") and a printed list of services stay rejected either way
+    billing_url: str = ""                # the lab billing app that gets each read prescription's lab tests as a draft bill (output/billing_hook.py); blank = off
+    billing_token: str = ""              # the X-Api-Token that app expects
+    billing_timeout_s: float = 8.0
     checklist_marks_enabled: bool = True # a PRINTED CHECKLIST page (a menu of tests the doctor strikes, ticks or circles) is read for pen marks, only when the page's text shows such a menu (extract/checklist.py)
     unplaced_choice: bool = True         # an investigation written by hand that nobody could read ("Laryngoscopy" read as "Lang?erseid?") is shown with the few names most alike and chosen only when most answers agree (extract/unplaced.py)
     test_box_reread: bool = True         # the box of tests the whole-page answer cited is read again as one enlarged picture at three sizes (extract/test_box.py); a test is accepted only when the lists place it, two sizes list it and the unhinted plain reading has letters like it

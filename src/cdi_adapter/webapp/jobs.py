@@ -441,6 +441,12 @@ def _stage2(job: "Job", prog: DocProg,
         except Exception as exc:  # noqa: BLE001 - the table is an extra: never cost the read
             log.warning("flat_table_failed", document_id=prog.document_id, error=str(exc)[:150])
 
+        try:
+            from ..output import billing_hook
+            billing_hook.notify_async(prog.document_id)       # the lab tests go to the lab billing app as a draft bill (only when CDI_BILLING_URL is set)
+        except Exception as exc:  # noqa: BLE001 - billing is an extra: never cost the read
+            log.warning("billing_hook_failed", document_id=prog.document_id, error=str(exc)[:150])
+
         prog.status = "done"
         prog.seconds = time.time() - prog.t0
     except Exception as exc:  # noqa: BLE001
