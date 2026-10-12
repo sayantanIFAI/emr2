@@ -209,6 +209,11 @@ def test_each_test_shows_the_lab_list_result_and_the_page_match_score():
     assert "lab list: recognised" in ADMIN_PAGE and "lab list: not placed" in ADMIN_PAGE and "page match " in ADMIN_PAGE
 
 
-def test_the_extracted_tab_has_a_table_searched_by_mobile_or_token_number():
-    assert 'id="fl-phone"' in ADMIN_PAGE and 'id="fl-token"' in ADMIN_PAGE and "api/flat/search" in ADMIN_PAGE and 'id="fl-csv"' in ADMIN_PAGE
-    assert "Standard name" in ADMIN_PAGE and "Booking when" in ADMIN_PAGE
+def test_the_extracted_tab_shows_the_patient_doctor_organisation_and_lab_test_tables_and_only_offers_the_flat_table_as_a_csv():
+    # the screen is the one that was in use until 9 October 5 pm IST: patient, organisation, doctor, booking and lab-test tables per prescription;
+    # the one-row-per-test table is only a CSV download, not on the screen
+    assert 'id="patients-card"' in ADMIN_PAGE and 'id="psearch"' in ADMIN_PAGE
+    assert 'id="flat-card"' not in ADMIN_PAGE and 'id="fl-table"' not in ADMIN_PAGE and 'id="fl-phone"' not in ADMIN_PAGE
+    assert "api/flat/search?fmt=csv&phone=" in ADMIN_PAGE and "Download all columns (CSV)" in ADMIN_PAGE
+    for table in ("Patient details", "Organisation (hospital / clinic)", "Doctor details", "Doctor booking"):
+        assert table in ADMIN_PAGE
