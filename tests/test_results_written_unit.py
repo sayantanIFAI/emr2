@@ -90,3 +90,14 @@ def test_a_tick_box_read_as_a_question_mark_before_a_test_name_is_not_a_letter()
 
     assert T.placed_text("?Lipid Profile") is not None
     assert T.placed_text("?CBC") is not None
+
+
+def test_a_medicines_dose_written_under_a_test_is_not_its_result():
+    # MEASURED on a real page: the ordered "Blood for fever profile" had "1 cap. Antiflu" written under it; "1" was taken as its value
+    blocks = [{"text": "Blood for fever profile", "bbox": [30, 560, 190, 590]}, {"text": "1 cap. Antiflu (75)", "bbox": [30, 592, 190, 620]}]
+    assert W.page_result_reason("Blood for fever profile", blocks) is None
+    for dose in ("1 cap", "1 tab at bedtime", "2 tabs", "5 ml", "500 mg", "1 syp", "10 drops"):
+        assert W.page_result_reason("Blood for fever profile", [blocks[0], {"text": dose, "bbox": [30, 592, 190, 620]}]) is None, dose
+    # a real value in the same place is still a result
+    assert W.page_result_reason("Hb", [{"text": "Hb", "bbox": [30, 560, 90, 590]}, {"text": "11.9 g/dl", "bbox": [95, 560, 190, 590]}]) is not None
+    assert W.page_result_reason("TSH", [{"text": "TSH 1.27"}]) is not None

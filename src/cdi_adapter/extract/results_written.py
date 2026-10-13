@@ -100,9 +100,15 @@ def _after_has_value(after: str, next_piece: str = "") -> bool:
     probes = [a, a[1:].lstrip() if a[:1] in "-–:=(" else a, nxt]
     pat = re.compile(r"^\(?\s*(?:" + _NUM + r"|\+\s*ve|[-–]\s*ve|positive|negative|reactive|non[- ]?reactive|normal|wnl|nad|detected|not\s+detected|nil)\b", re.I)
     for p in probes:
-        if pat.match(p) and not re.match(r"^\(?\s*\d+(?:[.,]\d+)?\s*(?:hrs?|hours?|days?|d\b|wks?|weeks?|months?|mo\b|min)\b", p, re.I):
+        if pat.match(p) and not re.match(r"^\(?\s*\d+(?:[.,]\d+)?\s*(?:hrs?|hours?|days?|d\b|wks?|weeks?|months?|mo\b|min)\b", p, re.I) \
+                and not _DOSE.match(p):
             return True
     return False
+
+
+# "1 cap", "2 tabs", "5 ml", "500 mg" next to a test name is the NEXT LINE, a medicine's dose: never a result. MEASURED on a real page: the ordered
+# "Blood for fever profile" had "1 cap. Antiflu" written under it, "1" was taken as its value and the test was thrown out as already done.
+_DOSE = re.compile(r"^\(?\s*\d+(?:[.,/]\d+)?\s*(?:caps?|capsules?|tabs?|tablets?|syp|syrup|inj|injection|drops?|puffs?|sachets?|spoons?|tsp|ml(?![a-z])|mg(?!\s*/)|mcg|units?|sos|bd|tds|od|hs)(?![a-z])", re.I)
 
 
 _ITEM = re.compile(r"\s*[/,&+]\s*[A-Za-z][A-Za-z0-9\-.]{0,18}")
