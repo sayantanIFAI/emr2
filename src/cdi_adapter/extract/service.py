@@ -578,7 +578,7 @@ def _check_the_name(client: Any, image: bytes, blocks: list[dict[str, Any]], pay
     first = first if isinstance(first, str) and first.strip() and first.strip().casefold() not in ("null", "none") else None
     from ..names import clean_name
 
-    from ..names import name_on_page
+    from ..names import name_on_page, sentence_like
 
     if first is None and not name_on_page(blocks):
         # the whole-page answer found no name and the page text has no label, title or age: no patient name is written here (a page cropped to its
@@ -590,17 +590,18 @@ def _check_the_name(client: Any, image: bytes, blocks: list[dict[str, Any]], pay
 
     first = clean_name(first)                         # "Mrs.Sumita Gupta Gangopadhyay yrs Female": the age and sex are not part of the name
     payload["patient"]["name"] = first
-    if first and org_like(first):                     # the clinic's name on the letterhead was taken for the patient: it is not a name
+    if first and (org_like(first) or sentence_like(first)):    # the clinic's name on the letterhead, or a line of the Rx, was taken for the patient: it is not a name
         first, payload["patient"]["name"] = None, None
     plain_reads, json_reads = resolve_llm.name_reads_split(client, image, blocks, first)
-    plain_reads = [r for r in (clean_name(x) for x in plain_reads) if r]
-    json_reads = [r for r in (clean_name(x) for x in json_reads) if r]
+    plain_reads = [r for r in (clean_name(x) for x in plain_reads) if r and not sentence_like(r)]      # a read of the wrong lines is not a name: MEASURED, six
+    json_reads = [r for r in (clean_name(x) for x in json_reads) if r and not sentence_like(r)]        # readings of the Rx text agreed with each other
     # the PLAIN transcriptions are the readings (they decide); the JSON "Indian personal name" readings are only a cross-check and only offered as
     # other readings of the name (that prompt snaps to the commonest name and drops words: "Sumita Gupta Gangopadhyay" came out "Sunita Gupta")
     reads = [r for r in (plain_reads or json_reads) if not org_like(r)]
     cross = [r for r in json_reads if plain_reads and not org_like(r) and not any(alike(r, p, 0.85) for p in plain_reads)]
     payload["_name_reads"] = ([first, *reads] if first else list(reads)) + cross
     if not reads:
+        _anchor_to_printed_banner(payload, blocks, [first, *json_reads])
         return
     chosen, agree, total = consensus([first or "", *reads])
     payload["_name_agreement"] = [agree, total]
@@ -638,12 +639,35 @@ def _check_the_name(client: Any, image: bytes, blocks: list[dict[str, Any]], pay
         payload["patient"]["name"] = first                  # the re-reads of a small crop gave one word where the page gave a full name
         payload["_name_note"] = f"the re-reads gave only '{shown}'; the first reading '{first}' is kept"
     payload["patient"]["name"] = clean_name(payload["patient"].get("name"))
-    payload["_name_reads"] = [c for c in (clean_name(x) for x in payload.get("_name_reads") or []) if c]
+    payload["_name_reads"] = [c for c in (clean_name(x) for x in payload.get("_name_reads") or []) if c and not sentence_like(c)]
+    if sentence_like(payload["patient"].get("name")):
+        payload["patient"]["name"] = None
+    _anchor_to_printed_banner(payload, blocks, [first, *plain_reads, *json_reads, *payload["_name_reads"]])
     _suggest_joined_name(payload)
     if settings.name_choice_votes:
         _suggest_first_names(client, images or [image], blocks, payload)
     if settings.name_surname_votes:
         _suggest_surnames(client, images or [image], blocks, payload)
+
+
+def _anchor_to_printed_banner(payload: dict[str, Any], blocks: list[dict[str, Any]], readings: list[Any]) -> None:
+    """The patient line a clinic PRINTS ("SAYAN DAS (40 Y / MALE)") is read exactly by the printed-text engine, and decides over every re-read: when the
+    shown name does not have the printed letters, the reading made that does is shown instead (it picks among the readings, it never invents a
+    name; the printed text has no reliable spaces). The age and sex printed beside it are the age and sex. MEASURED on a real page: the shown name was a
+    line of the Rx, the age "5 days" and the sex Female, while the page printed SAYAN DAS (40 Y / MALE)."""
+    from ..names import alike, letters, printed_banner, sentence_like
+
+    bn = printed_banner(blocks)
+    if not bn:
+        return
+    pat = payload["patient"]
+    cur = pat.get("name")
+    if not (cur and alike(letters(cur), bn["letters"], 0.85)):
+        pick = next((r for r in readings if isinstance(r, str) and r.strip() and not sentence_like(r) and alike(letters(r), bn["letters"], 0.85)), None)
+        if pick:
+            pat["name"] = pick
+            payload["_name_note"] = f"the patient line printed on the page has the letters '{bn['letters']}': the reading that matches it is shown"
+    pat["age_text"], pat["sex"] = f"{bn['age']} yrs", bn["sex"]
 
 
 _TITLE_WORDS = frozenset(("mr", "mrs", "ms", "miss", "master", "smt", "shri", "sri", "dr"))

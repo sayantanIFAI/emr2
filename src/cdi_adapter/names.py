@@ -13,7 +13,8 @@ def name_key(name: str | None) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[^a-z ]", "", n.casefold())).strip()
 
 
-_NOT_NAME_WORDS = frozenset("yrs yr yrs. yr. years year yo y/o age aged sex gender male female m/f f/m yrsfemale yrsmale".split())
+_NOT_NAME_WORDS = frozenset(("yrs yr yrs. yr. years year yo y/o age aged sex gender male female m/f f/m yrsfemale yrsmale "
+                             "consultant signature signatory physician").split())      # the age and sex written beside a name; the "Consultant Signature" label beside the doctor's sign
 _GLUED_TITLE = re.compile(r"^(mr|mrs|ms|miss|smt|shri|sri|dr)\.(?=[A-Za-z])", re.I)
 SEPARATORS = re.compile(r"[\s/,;|]+")             # "Gangopadhyay./72yrs/Female" is three words: the name, the age, the sex
 
@@ -94,6 +95,45 @@ def consensus(candidates: list[str], threshold: float = 0.85) -> tuple[str | Non
     return medoid, len(best), len(cands)
 
 
+# A patient's name is a few words. A line of the doctor's advice ("Rx gargle warm water betadine steam inhalation kaolin plus rest enough fluids OR") is never one.
+# MEASURED on a real page: the name line was cut from the wrong place and six readings of the Rx text agreed with each other, so a sentence became the name.
+MAX_NAME_WORDS = 5
+_SENTENCE_WORDS = frozenset("""rx tab tabs cap caps syp inj adv advice tablet tablets capsule capsules daily water warm steam inhalation gargle fluids meals
+bedtime consultant signature diagnosis complaint complaints history medicine medicines take twice thrice""".split())
+
+
+def sentence_like(name: str | None) -> bool:
+    """True for words that cannot be a person's name: more than five of them, or a medicine / advice / form-label word among them."""
+    words = re.findall(r"[A-Za-z][A-Za-z'.\-]*", _TITLES.sub("", (name or "").strip()))
+    return len(words) > MAX_NAME_WORDS or any(w.strip(".'-").lower() in _SENTENCE_WORDS for w in words)
+
+
+def letters(name: str | None) -> str:
+    """The letters of a name without spaces, title or case: the readers often drop the spaces of a printed name ("SAYANDAS")."""
+    return re.sub(r"[^a-z]", "", name_key(name))
+
+
+_BANNER = re.compile(r"(?i)^\W*([A-Za-z][A-Za-z .'\-]{2,40}?)\s*[(\[]?\s*(\d{1,3})\s*(?:y|yrs?|years?)?\s*/\s*(male|female|m|f)(?![a-z])")
+
+
+def printed_banner(blocks: list[dict] | None) -> dict[str, str] | None:
+    """The patient banner a clinic prints at the top of its prescription ("SAYAN DAS (40 Y / MALE)"), read by the printed-text engine, as
+    ``{"letters": ..., "age": ..., "sex": ...}``; None when there is none. Printed text only: the engine is exact on print and not on handwriting.
+    A name here has no reliable spaces, so only its letters are kept; it picks among the readings made and never becomes a name by itself."""
+    for b in blocks or []:
+        rec = b.get("recognition")
+        if not (isinstance(rec, dict) and rec.get("state") == "printed"):
+            continue
+        text = str(b.get("text") or "").strip()
+        m = _BANNER.match(text)
+        if not m or re.match(r"(?i)^\W*(?:dr|prof|doctor)\b", text):
+            continue
+        got = letters(m.group(1))
+        if len(got) >= 3:
+            return {"letters": got, "age": m.group(2), "sex": "Male" if m.group(3).lower() in ("m", "male") else "Female"}
+    return None
+
+
 # Common surnames of the patients (Kolkata and India wide). Used ONLY to offer spellings the front desk can pick from when a surname
 # is read badly ("San?ar", "Sanwar" for Sarkar); never to decide a name. A surname that is not here is simply not offered.
 COMMON_SURNAMES = tuple("""Sarkar Sarker Sircar Sen Sengupta Sanyal Saha Shaw Sinha Singh Sharma Shah Sheikh Chowdhury Chaudhuri Choudhury
@@ -127,7 +167,7 @@ def surname_options(readings: list[str], limit: int = 7) -> list[str]:
 
 
 
-_AGE_CUE = r"(?<![0-9])\d{1,3}\s*(?:yrs?|y|years?)?\s*[/,]\s*[mf](?![a-z])|(?<![0-9])\d{1,3}\s*(?:yrs?|years?)(?![a-z])"
+_AGE_CUE = r"(?<![0-9])\d{1,3}\s*(?:yrs?|y|years?)?\s*[/,]\s*(?:male|female|m|f)(?![a-z])|(?<![0-9])\d{1,3}\s*(?:yrs?|years?)(?![a-z])"
 _NAME_CUE = re.compile(r"(?i)(?<![a-z])(?:name|patient|pt\.?|nm)(?![a-z])|(?<![a-z])(?:mr|mrs|ms|miss|smt|shri|sri|master|baby|kum|late)(?![a-z])\.?|"
                        r"(?<![a-z0-9])age(?![a-z])|" + _AGE_CUE, re.I)
 

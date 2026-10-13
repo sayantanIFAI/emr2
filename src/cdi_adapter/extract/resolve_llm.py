@@ -391,8 +391,10 @@ def best_name_block(blocks: list[dict[str, Any]] | None, name: str | None) -> di
             continue
         text = str(b.get("text") or "")
         rec = b.get("recognition")
-        if (isinstance(rec, dict) and rec.get("state") == "printed") or re.match(r"(?i)^\W*(?:dr|prof|doctor)\b", text.strip()):
-            continue
+        from ..names import printed_banner
+
+        if (isinstance(rec, dict) and rec.get("state") == "printed" and not printed_banner([b])) or re.match(r"(?i)^\W*(?:dr|prof|doctor)\b", text.strip()):
+            continue                                                 # the doctor's printed line; but the printed PATIENT banner ("SAYANDAS(40Y/MALE)") is the name line
         bt = name_key(text).split()
         glued = "".join(bt)                                          # the readers often drop the spaces: "SAYANDAS(40Y/MALE)"
         ratios = []
