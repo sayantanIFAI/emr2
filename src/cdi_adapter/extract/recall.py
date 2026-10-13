@@ -25,17 +25,19 @@ _RESULT_TABLE = re.compile(r"(?i)\breference\s+(?:range|interval)\b|\bbio\.?\s*r
 
 def reroute(doc_type: str | None, blocks: list[dict[str, Any]] | None) -> tuple[str | None, str]:
     """``(new doc type, why)`` when this page should be handled as a prescription, else ``(None, "")``."""
+    if doc_type == "prescription":
+        return None, ""
+    if settings.upload_assume_prescription:
+        # the admin screen takes prescriptions, and the owner's rule is that every other page type behaves EXACTLY like a prescription until told otherwise.
+        # MEASURED: a handwritten page with a box of tests (TSH/FT4, CBC, ESR, IgE, RBS, CRP) typed "lab_report" (0.9) ran none of the prescription steps: 0 tests.
+        # No condition on the page text: the classifier's guess never decides whether the tests are looked for. Whatever is found is still checked by a person.
+        return "prescription", f"typed {doc_type or 'unknown'}, but this screen takes prescriptions: every page is handled as one"
     if doc_type in RX_TYPES or doc_type not in _REROUTE_FROM or not blocks:
         return None, ""
     texts = [str(b.get("text") or "") for b in blocks]
     page = " ".join(texts)
     if _OPERATIVE_WORDS.search(page):
         return None, ""                                    # it says it is an operative note
-    if doc_type == "other" and settings.upload_assume_prescription:
-        # the admin screen takes prescriptions. A page cropped to its clinical part (no letterhead, no names) is typed "other" by the classifier, and every
-        # prescription step was skipped: a doctor's box of tests ("TSH/FT4, CBC, ESR, IgE, RBS, CRP") reached nobody. It is handled as a prescription;
-        # whatever is found is still checked by a person.
-        return "prescription", "typed other, but this screen takes prescriptions: a page with no letterhead or names is handled as one"
     found = [f for f in test_cluster.scan(blocks) if f.why in ("exact", "marker", "beside") and not not_lab.entry_reason(f.test)]    # laboratory tests only
     meds = sum(1 for t in texts if t.strip() and looks_like_medicine(t))
     cue = bool(_RX_CUES.search(page))

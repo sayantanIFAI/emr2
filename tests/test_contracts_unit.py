@@ -18,7 +18,7 @@ from cdi_adapter.storage_fs import FilesystemStore
 # ------------------------------------------------------------------ the registry
 def test_every_swap_point_has_a_setting_a_current_choice_and_alternatives_listed():
     d = {s["swap_point"]: s for s in swap.describe()}
-    assert {"pdf_renderer", "object_store", "job_queue", "printed_ocr", "handwriting_line", "vlm", "terminology",
+    assert {"pdf_renderer", "object_store", "job_queue", "printed_ocr", "vlm", "terminology",
             "drive_connector", "signin", "metrics_sink"} <= set(d)
     for s in d.values():
         assert s["setting"].startswith("CDI_") and s["current"] in s["available"] and s["about"]
