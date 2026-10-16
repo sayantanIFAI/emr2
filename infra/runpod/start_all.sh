@@ -37,7 +37,16 @@ bash "$REPO/infra/runpod/ensure_indian_codes.sh" || true       # the national la
 MLP="${CDI_MLSERVE_PORT:-8077}"
 WBP="${CDI_WEBAPP_PORT:-8080}"
 
-if [ "${CDI_MLSERVE_BACKEND:-hf}" = "vllm" ]; then
+if [ "${CDI_REMOTE_MODEL:-0}" = "1" ]; then
+  # the model runs on a SEPARATE GPU machine (infra/runpod/start_gpu_node.sh), reached through the tunnel (infra/runpod/model_tunnel.sh).
+  # Nothing model-related is started here, and no fallback server either: this machine has no GPU.
+  echo "########## 1b. vLLM engine: on the GPU node, through the tunnel (CDI_REMOTE_MODEL=1) ##########"
+  if curl -sf "http://127.0.0.1:${CDI_VLLM_PORT:-8078}/v1/models" >/dev/null 2>&1; then
+    echo "the tunnel to vLLM is up"
+  else
+    echo "!! the tunnel to the GPU node is not up yet: bash $REPO/infra/runpod/model_tunnel.sh start <gpu-ip> <gpu-ssh-port>  (no page can be read until it is)"
+  fi
+elif [ "${CDI_MLSERVE_BACKEND:-hf}" = "vllm" ]; then
   echo "########## 1b. vLLM engine  (:${CDI_VLLM_PORT:-8078}) ##########"
   VLP="${CDI_VLLM_PORT:-8078}"
   if curl -sf "http://127.0.0.1:${VLP}/v1/models" >/dev/null 2>&1; then
@@ -55,6 +64,8 @@ fi
 echo "########## 2. model gateway  (:$MLP) ##########"
 if curl -s "http://127.0.0.1:${MLP}/healthz" | grep -q configured_backend; then
   echo "already up"
+elif [ "${CDI_REMOTE_MODEL:-0}" = "1" ]; then
+  echo "the model gateway is on the GPU node: not started here"
 else
   pkill -f cdi_adapter.mlserve 2>/dev/null || true; sleep 1
   setsid nohup python -m cdi_adapter.mlserve > /workspace/logs/mlserve.log 2>&1 < /dev/null &

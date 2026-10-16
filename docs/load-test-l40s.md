@@ -12,6 +12,8 @@ Two layouts, two different questions. **Never size the GPU from layout B.**
 
 Layout B is not a capacity test: the laptop has 4 cores and does its own OCR, and every model call crosses the tunnel.
 
+**Layout C, the production replica** (a CPU pod for the app and an L40S pod for the model, joined by a tunnel) is in `docs/two-node-runpod.md`: what to rent, the scripts, the bring-up order and the load test on that layout.
+
 Numbers in this guide are labelled MEASURED (seen in this repo's own runs), ESTIMATE (reasoned, not measured) or ASSUMPTION.
 
 ## 0. Rules for the pods (the owner's, do not skip)

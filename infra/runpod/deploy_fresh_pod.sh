@@ -40,9 +40,14 @@ S3S="$(secret s3_secret_key)"
 DBP="$(secret db_password | tr -dc 'A-Za-z0-9' | head -c 28)"
 printf 'CDI_S3_ACCESS_KEY=%s\nCDI_S3_SECRET_KEY=%s\nCDI_DB_PASSWORD=%s\n' "$S3K" "$S3S" "$DBP" >> .env
 printf 'CDI_DATABASE_URL=postgresql+psycopg://cdi:%s@127.0.0.1:5432/cdi\n' "$DBP" >> .env
+REMOTE="${CDI_REMOTE_MODEL:-0}"          # 1 = APP NODE: the model runs on a separate GPU machine (start_gpu_node.sh), reached through the tunnel (model_tunnel.sh)
+[ "$REMOTE" = "1" ] && printf 'CDI_REMOTE_MODEL=1\n' >> .env
 chmod 600 .env
 echo "admin user: admin   password file: $PWF"
 
+if [ "$REMOTE" = "1" ]; then
+echo "== 3. models: not downloaded here (they are on the GPU node) =="
+else
 echo "== 3. models (downloaded once, pinned by the hub revision at download time) =="
 pip install -q huggingface_hub hf_transfer 2>&1 | tail -1
 cat > "$WS/prefetch_models.py" <<'PY'
@@ -55,6 +60,7 @@ print("PREFETCH_DONE", flush=True)
 PY
 setsid nohup python3 "$WS/prefetch_models.py" > "$WS/logs/prefetch.log" 2>&1 < /dev/null &
 echo "prefetch pid $!  (log $WS/logs/prefetch.log)"
+fi
 
 echo "== 4. start everything =="
 setsid nohup bash "$REPO/infra/runpod/start_all.sh" > "$WS/logs/start_all.log" 2>&1 < /dev/null &
