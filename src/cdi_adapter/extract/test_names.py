@@ -219,6 +219,25 @@ def _split_composite(part: str) -> list[str]:
     return _split_runs(part)
 
 
+_ABO_JOIN = ""
+_ABO_RH = re.compile(r"(?i)(?<![a-z])(abo)\s*(?:\+|&|/|,|and)?\s*(rh)(?![a-z])")
+
+
+_IMAGING_START = re.compile(r"(?i)^\W*(?:x[\s.\-]*rays?|xrays?|mri|ct(?:\s*scan)?|usg|ultra\s?sound)(?![a-z])")
+_VIEW_ONLY = re.compile(r"(?i)^\W*(?:(?:ap|pa|lat|lateral|oblique|obl|both|bilateral|rt|lt|right|left|view|views|and|with|c|\s|[/&,.\-])+)$")
+
+
+def _keep_views(pieces: list[str]) -> list[str]:
+    """"X-ray LS spine AP and lat" was cut into "X-ray LS spine AP" and "lat": the views written after an imaging order belong to it, not to a test of their own."""
+    out: list[str] = []
+    for p in pieces:
+        if out and _IMAGING_START.match(out[-1]) and _VIEW_ONLY.match(p) and re.search(r"[A-Za-z]", p):
+            out[-1] = f"{out[-1]} {p}".strip()
+        else:
+            out.append(p)
+    return out
+
+
 def split_tests(text: str | None) -> list[str]:
     """One entry per test: ``"CBC/KFT/LFT"`` -> CBC, KFT, LFT; ``"HbA1c/FBS/PPBS/S LIPASE TSH/FT4"`` -> six tests;
     ``"Blood: CBC, Urea, FBS"`` -> CBC, Urea, FBS. A name that is one test (``"Urine R/E"``, ``"A/G ratio"``, ``"CK-MB"``,
@@ -231,6 +250,7 @@ def split_tests(text: str | None) -> list[str]:
     if whole:
         return whole
     t = _MARKS.sub(",", t)                                    # a tick / bullet / arrow written before each test is a separator
+    t = _ABO_RH.sub(lambda m: f"{m.group(1)}{_ABO_JOIN}{m.group(2)}", t)       # "ABO + Rh typing" is ONE test: the + is not a separator
     for part in re.split(r"\s*[,;+]\s*(?=[A-Za-z0-9(\[{])|\s+and\s+", t):
         part = _LIST_NO.sub("", part).strip(" .")             # "(1) CBC" / "2. LFT" / "3) TSH" -> the test only
         part = _BRACKETS.sub("", part).strip(" .")             # "{HbA1c" / "TSH}" / "[HbA1c / FBS]": the braces are the doctor's
@@ -239,6 +259,9 @@ def split_tests(text: str | None) -> list[str]:
             continue
         sugar = _sugar_run(part)
         out += sugar if sugar else [_RESULT_TAIL.sub("", b).strip(" .") for b in _split_composite(part)]
+    out = [x.replace(_ABO_JOIN, " + ") for x in out]
+    out = _keep_views(out)
+    t = t.replace(_ABO_JOIN, " + ")
     seen: set[str] = set()
     uniq = [x for x in out if x and not (x.casefold() in seen or seen.add(x.casefold()))]
     return uniq or [t]

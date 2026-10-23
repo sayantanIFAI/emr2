@@ -13,6 +13,7 @@ def name_key(name: str | None) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[^a-z ]", "", n.casefold())).strip()
 
 
+_LEAD_LABEL = re.compile(r"(?i)^\W*(?:(?:for|name|nm|pt|patient(?:'s)?)(?:\s+of\s+(?:the\s+)?patient)?(?![A-Za-z])[\s:.\-]*)+")
 _NOT_NAME_WORDS = frozenset(("yrs yr yrs. yr. years year yo y/o age aged sex gender male female m/f f/m yrsfemale yrsmale "
                              "consultant signature signatory physician").split())      # the age and sex written beside a name; the "Consultant Signature" label beside the doctor's sign
 _GLUED_TITLE = re.compile(r"^(mr|mrs|ms|miss|smt|shri|sri|dr)\.(?=[A-Za-z])", re.I)
@@ -22,8 +23,10 @@ SEPARATORS = re.compile(r"[\s/,;|]+")             # "Gangopadhyay./72yrs/Female"
 def clean_name(name: str | None) -> str | None:
     """A patient's name is words only. Everything from the first number, or the first age or sex word ("74 yrs Female", "yrs Female", "M/F"),
     is the age and sex written beside the name, never part of it; stray digits inside a word are dropped; a title glued to the first word
-    ("Mrs.Sumita") gets its space. ``None`` when no letters are left."""
-    text = _GLUED_TITLE.sub(lambda m: m.group(0) + " ", str(name or "").strip())
+    ("Mrs.Sumita") gets its space; a label word in front of it ("For Mr Oukar Chowdhury", "Name: Sita Roy", "Patient Name of ...") is the form's wording, not
+    part of the name. ``None`` when no letters are left."""
+    text = _LEAD_LABEL.sub("", str(name or "").strip())
+    text = _GLUED_TITLE.sub(lambda m: m.group(0) + " ", text)
     words: list[str] = []
     toks = SEPARATORS.split(text)
     for k, tok in enumerate(toks):
@@ -130,8 +133,60 @@ def printed_banner(blocks: list[dict] | None) -> dict[str, str] | None:
             continue
         got = letters(m.group(1))
         if len(got) >= 3:
-            return {"letters": got, "age": m.group(2), "sex": "Male" if m.group(3).lower() in ("m", "male") else "Female"}
+            return {"letters": got, "raw": re.sub(r"[^A-Za-z]", "", m.group(1)), "title": "", "age": m.group(2),
+                    "sex": "Male" if m.group(3).lower() in ("m", "male") else "Female"}
     return None
+
+
+_NAME_LABEL = re.compile(r"(?i)^\W*(?:patient'?s?name|nameofthepatient|nameofpatient|patientname|name)\W*[:\-]+\W*")
+_FIELD_END = re.compile(r"(?i)(?:gender|sex|age|dob|date|address|contact|mobile|mob|phone|ph)\s*[:\-]")
+_TITLE_LEAD = re.compile(r"(?i)^(?:mr|mrs|ms|miss|smt|shri|sri|master|baby|kum|late)(?![a-z]{2})\.?\s*")
+
+
+def printed_name_field(blocks: list[dict] | None) -> dict[str, str] | None:
+    """The patient's name where the form PRINTS it after its own label ("Name of Patient: Mr. ONKAR CHOUDHURY"), read by the printed-text engine with high
+    confidence: ``{"letters", "raw", "title"}``, else None. Print is exact (the model read CHAUDHURY for the printed CHOUDHURY); the engine drops the
+    spaces, so only the letters are trusted, and the readings made supply the word breaks (``respace_to_printed``). A doctor's name field is never it."""
+    for b in blocks or []:
+        rec = b.get("recognition")
+        if not (isinstance(rec, dict) and rec.get("state") == "printed"):
+            continue
+        try:
+            conf = float(b.get("ocr_conf") or 0)
+        except (TypeError, ValueError):
+            conf = 0.0
+        text = str(b.get("text") or "").strip()
+        m = _NAME_LABEL.match(text)
+        if not m or conf < 0.9:
+            continue
+        rest = text[m.end():]
+        if re.match(r"(?i)^\W*(?:dr|doctor|prof)(?![a-z]{2})", rest):
+            continue
+        e = _FIELD_END.search(rest)
+        if e:
+            rest = rest[:e.start()]
+        t = _TITLE_LEAD.match(rest)
+        title = ""
+        if t:
+            title, rest = t.group(0).strip(" ."), rest[t.end():]
+        raw = re.sub(r"[^A-Za-z]", "", rest)
+        if len(raw) >= 3:
+            return {"letters": raw.lower(), "raw": raw, "title": title}
+    return None
+
+
+def respace_to_printed(raw: str, reading: str | None) -> str | None:
+    """The printed letters (spelling exact, spaces lost by the engine) cut into words where a READING of the same name puts its word breaks.
+    ``None`` when the reading cannot stand for them (its letters differ in number by more than two)."""
+    words = re.findall(r"[A-Za-z]+", _TITLES.sub("", (reading or "").strip()))
+    if not words or abs(sum(len(w) for w in words) - len(raw)) > 2:
+        return None
+    out, i = [], 0
+    for k, w in enumerate(words):
+        j = len(raw) if k == len(words) - 1 else min(len(raw), i + len(w))
+        out.append(raw[i:j])
+        i = j
+    return " ".join(x for x in out if x) or None
 
 
 # Common surnames of the patients (Kolkata and India wide). Used ONLY to offer spellings the front desk can pick from when a surname

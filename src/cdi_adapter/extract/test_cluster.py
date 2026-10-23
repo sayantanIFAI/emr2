@@ -401,6 +401,9 @@ def repair_piece(piece: str, evidence: bool) -> tuple[str, str] | None:
         return None
     if _ELECTROLYTE.match(piece):
         return "Na+ & K+", f"read as '{piece}' (sodium and potassium)"
+    if re.fullmatch(r"(?i)pt\W*apt{1,2}", piece.strip()):
+        # "PT/APTT" written as one line: the last T of APTT is lost and "APT" would be taken for a trailing "Test" abbreviation and dropped. MEASURED on a real page.
+        return "PT, APTT", f"read as '{piece}' (PT and APTT: the last T of APTT was not read)"
     words = piece.split()
     if len(words) >= 2 and (len(words[-1].strip(".")) <= 3 or words[-1].casefold().strip(".") in ("test", "tests", "level")):
         trimmed = " ".join(words[:-1]).strip(" .")

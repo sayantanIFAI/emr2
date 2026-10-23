@@ -50,6 +50,60 @@ def _text_of(it: Any) -> str:
     return str(it.get("text") if isinstance(it, dict) else it or "")
 
 
+_BARE_MODALITY = {"mri": "mri", "xray": "xray", "ct": "ct", "ctscan": "ct", "usg": "usg", "ultrasound": "usg"}
+
+
+def drop_generic_modality(investigations: list[Any]) -> tuple[list[Any], list[str]]:
+    """A bare "MRI" / "X ray" / "CT scan" / "USG" beside a SPECIFIC order of the same modality ("MRI of C spine", "X-ray pelvis") is the same line read as
+    its first word: the specific one stays. (Owner, 24 Oct 2026: "only outcome was MRI".)"""
+    def mod_of(text: str) -> str | None:
+        m = re.match(r"(?i)^\W*(x[\s.\-]*rays?|xrays?|mri|ct(?:\s*scan)?|usg|ultra\s?sound)(?![a-z])", text)
+        return _BARE_MODALITY.get(re.sub(r"[^a-z]", "", m.group(1).casefold()).rstrip("s")) or _BARE_MODALITY.get(re.sub(r"[^a-z]", "", m.group(1).casefold())) if m else None
+
+    specific = {mod_of(_text_of(it)) for it in investigations if mod_of(_text_of(it)) and len(re.findall(r"[A-Za-z]{2,}", _text_of(it))) > (2 if re.match(r"(?i)\W*ct\s*scan", _text_of(it)) else 1)}
+    kept: list[Any] = []
+    dropped: list[str] = []
+    for it in investigations:
+        text = _text_of(it)
+        mod = mod_of(text)
+        generic = mod is not None and re.sub(r"[^a-z]", "", text.casefold()) in _BARE_MODALITY
+        if generic and mod in specific:
+            dropped.append(text)
+        else:
+            kept.append(it)
+    return kept, dropped
+
+
+_GENERIC_WORDS = frozenset("test tests for and of the with blood bl serum urine function profile scan study screen routine panel examination exam general count".split())
+
+
+def drop_near_duplicates(investigations: list[Any]) -> tuple[list[Any], list[str]]:
+    """``(the entries without the duplicates, what was dropped)``. An entry NO list places whose words are mostly alike every word of another entry that
+    the lists DO place is that same test read a second time ("Blood for fever ?ipple" beside "fever profile": the same line, seen in two views). The
+    placed one stays. Nothing is dropped that holds a test the lists place on its own."""
+    def words_of(text: str) -> list[str]:
+        return [w.casefold() for w in re.findall(r"[A-Za-z]{3,}", text)]
+
+    placed = [(it, words_of(_text_of(it))) for it in investigations if placed_text(_text_of(it)) is not None]
+    kept: list[Any] = []
+    dropped: list[str] = []
+    for it in investigations:
+        text = _text_of(it)
+        if placed_text(text) is None and not any(placed_text(w) is not None for w in re.findall(r"[A-Za-z0-9+]+", text) if w.casefold() not in _GENERIC_WORDS):
+            mine = words_of(text)
+            def alike_word(o: str) -> bool:                  # every word of the placed entry has a close word here (0.5 for a long word badly read) ...
+                return any(difflib.SequenceMatcher(None, o, w).ratio() >= (0.5 if len(o) >= 6 else 0.6) for w in mine)
+
+            def anchored(ow: list[str]) -> bool:             # ... and at least one of them is read almost exactly: a weak match alone never drops a test
+                return any(difflib.SequenceMatcher(None, o, w).ratio() >= 0.8 for o in ow for w in mine)
+
+            if mine and any(other is not it and ow and all(alike_word(o) for o in ow) and anchored(ow) for other, ow in placed):
+                dropped.append(text)
+                continue
+        kept.append(it)
+    return kept, dropped
+
+
 def drop_covered(investigations: list[Any]) -> tuple[list[Any], list[str]]:
     """``(the entries without the covered ones, what was dropped)``. An entry is covered when it has at least two test names the lab lists place, each
     of them also listed as an entry of its own, and its other words are only short pieces (a heading read badly: "Br Av", "Adv")."""
@@ -169,7 +223,9 @@ def reread(client: Any, image: bytes, blocks: list[dict[str, Any]], payload: dic
 
         with ThreadPoolExecutor(max_workers=len(crops)) as pool:
             reads = [r for r in pool.map(plain, crops) if r]
-        options = candidates([text, *reads], department)
+        # an ADVICE line is offered only the names its letters are alike (no department prior): MEASURED on an ENT page, the complaint "com (RL)" among the advice
+        # was turned into "Laryngoscopy" by the ENT list (the model's own check gave that name a probability of 0.03)
+        options = candidates([text, *reads], None if from_advice else department)
         if len(options) < 1:
             continue
 

@@ -46,6 +46,29 @@ def _placed(text: str) -> bool:
     return rz is not None and not getattr(rz, "fuzzy", False)
 
 
+_DOSE_SIGNALS = (
+    re.compile(r"(?i)\bx\s*\d+\s*(?:d|days?|wks?|weeks?|mos?|months?)\b"),                                      # x 5d / x 10 days
+    re.compile(r"(?<!\d)\d\s*[-–]\s*\d\s*[-–]\s*\d(?!\d)"),                                           # 1-0-1
+    re.compile(r"(?i)\b(?:b\.?\s?d|t\.?\s?d\.?\s?s|b\.?\s?i\.?\s?d|o\.?\s?d|q\.?\s?i\.?\s?d|h\.?\s?s|s\.?\s?o\.?\s?s)\b"),    # b.d / tds / od / hs / sos
+    re.compile(r"(?i)\b\d+(?:\.\d+)?\s*(?:mg|mcg|ml|gm|iu)\b"),                                                   # 0.6 mg / 5ml
+    re.compile(r"(?i)\b(?:once|twice|thrice)\b"),
+    re.compile(r"(?<!\d)\d\s*/\s*\d?\s*[dwm]\b"),                                                                  # 1/w, 1/2w
+)
+_JUNK_BULLET = re.compile(r"[@¢©®●•·▪■◆]")
+
+
+def dosing_reason(text: str | None) -> str | None:
+    """A line with TWO OR MORE dose signals ("b.d", "x 5d", "once", "1-0-1", "0.6 mg", "1/w") is a medicine order, never an investigation. MEASURED on a
+    real page: the model filed medicine lines under investigations and "2w ch 0", "Menz-e - 1" and "5" were listed as tests."""
+    n = sum(1 for rx in _DOSE_SIGNALS if rx.search(text or ""))
+    return "a medicine's dose is written with it (a medicine order, not a test)" if n >= 2 else None
+
+
+def _junk_service_line(text: str) -> bool:
+    """A printed footer read badly ("CT Scan @ 4? Digital X-ray": the bullets came out as stray signs) still lists two or more services."""
+    return len(_IMAGING.findall(text)) >= 2 and bool(_JUNK_BULLET.search(text))
+
+
 def entry_reason(text: str | None, *, lab_only: bool = True) -> str | None:
     """Why this entry is not a laboratory test, judged from its own words (``None`` = it may be one)."""
     t = text or ""
@@ -100,7 +123,7 @@ def _line_reason(key: str, blocks: list[dict[str, Any]] | None, *, lab_only: boo
         r = entry_reason(" ".join(own), lab_only=lab_only)
         if r:
             reasons.append(f"written in a line that is {r.split(',')[0]}")
-        elif len(_BULLETS.findall(text)) >= 2 or len(_SERVICE_WORDS.findall(text)) >= 3:
+        elif len(_BULLETS.findall(text)) >= 2 or len(_SERVICE_WORDS.findall(text)) >= 3 or _junk_service_line(text):
             reasons.append("part of the clinic's printed list of services")
         elif ((not whole and (looks_like_medicine(text) or _MEDICINE_MARK.search(text)))
               or (whole and re.search(r"(?i)\b(?:tabs?|caps?|inj|syp|syr)\b\.?\s*" + re.escape(key.strip()) + r"(?![a-z0-9])", text))):
@@ -111,11 +134,15 @@ def _line_reason(key: str, blocks: list[dict[str, Any]] | None, *, lab_only: boo
     return reasons[0] if reasons else None
 
 
-def classify(names: list[str], blocks: list[dict[str, Any]] | None, *, lab_only: bool = True) -> dict[str, str]:
-    """``{name: reason}`` for the names that are not laboratory tests the doctor ordered."""
+def classify(names: list[str], blocks: list[dict[str, Any]] | None, *, lab_only: bool = True, confirmed: Any = ()) -> dict[str, str]:
+    """``{name: reason}`` for the names that are not laboratory tests the doctor ordered. ``confirmed`` = names the enlarged re-reads of the page listed
+    as tests to be done (the second look in enough views, the test-box reader): the "a result is already written next to it" rule is not applied to them,
+    because it looks at the OCR of the page, which may hold only the result line and not the (badly read) line of orders where the name is also written.
+    MEASURED on a real page: S. Lipase was written in the review list and as "S. Lipase - 91.6" among the findings, and was thrown out as already done."""
+    keep = {_norm(x) for x in confirmed or ()}
     out: dict[str, str] = {}
     for n in names:
-        r = entry_reason(n, lab_only=lab_only) or line_reason(n, blocks, lab_only=lab_only)
+        r = entry_reason(n, lab_only=lab_only) or (_line_reason(n, blocks, lab_only=lab_only) if _norm(n) in keep else line_reason(n, blocks, lab_only=lab_only))
         if r:
             out[n] = r
     return out

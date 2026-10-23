@@ -651,23 +651,34 @@ def _check_the_name(client: Any, image: bytes, blocks: list[dict[str, Any]], pay
 
 
 def _anchor_to_printed_banner(payload: dict[str, Any], blocks: list[dict[str, Any]], readings: list[Any]) -> None:
-    """The patient line a clinic PRINTS ("SAYAN DAS (40 Y / MALE)") is read exactly by the printed-text engine, and decides over every re-read: when the
-    shown name does not have the printed letters, the reading made that does is shown instead (it picks among the readings, it never invents a
-    name; the printed text has no reliable spaces). The age and sex printed beside it are the age and sex. MEASURED on a real page: the shown name was a
-    line of the Rx, the age "5 days" and the sex Female, while the page printed SAYAN DAS (40 Y / MALE)."""
-    from ..names import alike, letters, printed_banner, sentence_like
+    """What the page PRINTS decides the spelling of the name: the patient line a clinic prints at the top ("SAYAN DAS (40 Y / MALE)") or the form's own
+    "Name of Patient: Mr. ONKAR CHOUDHURY" field, read by the printed-text engine (exact on print, no reliable spaces, so only its letters are trusted).
+    A shown name that already has the printed letters is kept. Otherwise a reading with exactly those letters is shown; failing that, a reading alike
+    in letters keeps its word breaks but takes the printed spelling. It never invents a name: with no reading alike, nothing changes. The age and sex
+    printed in the banner are the age and sex. MEASURED on real pages: a line of the Rx became the name (SAYAN DAS printed), and the model wrote
+    CHAUDHURY for the printed CHOUDHURY."""
+    from ..names import alike, letters, printed_banner, printed_name_field, respace_to_printed, sentence_like
 
     bn = printed_banner(blocks)
-    if not bn:
+    src = bn or printed_name_field(blocks)
+    if not src:
         return
     pat = payload["patient"]
     cur = pat.get("name")
-    if not (cur and alike(letters(cur), bn["letters"], 0.85)):
-        pick = next((r for r in readings if isinstance(r, str) and r.strip() and not sentence_like(r) and alike(letters(r), bn["letters"], 0.85)), None)
-        if pick:
-            pat["name"] = pick
-            payload["_name_note"] = f"the patient line printed on the page has the letters '{bn['letters']}': the reading that matches it is shown"
-    pat["age_text"], pat["sex"] = f"{bn['age']} yrs", bn["sex"]
+    target = src["letters"]
+    pool = [x for x in [cur, *readings] if isinstance(x, str) and x.strip() and not sentence_like(x)]
+    if not (cur and letters(cur) == target):
+        exact = next((r for r in pool if letters(r) == target), None)
+        near = next((r for r in pool if alike(letters(r), target, 0.85)), None)
+        if exact:
+            pat["name"] = exact
+            payload["_name_note"] = f"the name printed on the page has the letters '{target}': the reading that matches it is shown"
+        elif near:
+            spaced = respace_to_printed(src.get("raw") or target, near)
+            pat["name"] = (f"{src['title']} {spaced}".strip() if src.get("title") else spaced) if spaced else near
+            payload["_name_note"] = f"the name printed on the page has the letters '{target}': its spelling is shown, with the word breaks of the reading '{near}'"
+    if bn:
+        pat["age_text"], pat["sex"] = f"{bn['age']} yrs", bn["sex"]
 
 
 _TITLE_WORDS = frozenset(("mr", "mrs", "ms", "miss", "master", "smt", "shri", "sri", "dr"))
@@ -1147,6 +1158,31 @@ def extract_document(document_id: str, *, patient_id: str | None = None,
                 payload["_covered"] = covered              # entries that only repeated tests already listed on their own ("Br Av TSH FT4")
         except Exception as exc:  # noqa: BLE001
             log.warning("drop_covered_failed", document_id=document_id, error=str(exc)[:160])
+        try:
+            from . import unplaced as _unp
+            payload["investigations"], _dups = _unp.drop_near_duplicates(payload.get("investigations") or [])
+            if _dups:
+                payload["_near_duplicates"] = _dups                 # the same line read twice ("Blood for fever ?ipple" beside "fever profile")
+        except Exception as exc:  # noqa: BLE001
+            log.warning("near_duplicates_failed", document_id=document_id, error=str(exc)[:160])
+        try:
+            from . import unplaced as _unp2
+            payload["investigations"], _bare = _unp2.drop_generic_modality(payload.get("investigations") or [])
+            if _bare:
+                payload["_generic_modality_dropped"] = _bare       # "MRI" beside "MRI of C spine"
+        except Exception as exc:  # noqa: BLE001
+            log.warning("generic_modality_failed", document_id=document_id, error=str(exc)[:160])
+        try:
+            from . import not_lab as _nl
+            _kept, _dosed = [], []
+            for _it in payload.get("investigations") or []:
+                _t = _it.get("text") if isinstance(_it, dict) else _it
+                (_dosed if isinstance(_t, str) and _nl.dosing_reason(_t) else _kept).append(_it)
+            if _dosed:
+                payload["investigations"] = _kept
+                payload["_dosing_dropped"] = [(_i.get("text") if isinstance(_i, dict) else _i) for _i in _dosed]     # medicine orders the model filed under investigations
+        except Exception as exc:  # noqa: BLE001
+            log.warning("dosing_filter_failed", document_id=document_id, error=str(exc)[:160])
         names = [one for io in payload.get("investigations") or [] for one in split_tests(_coded_text(io)[0])]
         if settings.checklist_marks_enabled:
             # a PRINTED CHECKLIST (a menu of tests the doctor strikes / ticks / circles): looked for in the text lines first, and only a page that has such a menu
@@ -1165,7 +1201,7 @@ def extract_document(document_id: str, *, patient_id: str | None = None,
         # they stay in the result as rejected with the reason, and are not put to the choose-from-list step
         from . import department, not_lab
         payload["_department"] = department.detect(department.header_texts(page1_blocks)) or department.normalise_hint(doc.get("department_hint"))    # from the printed header only; None when it shows none
-        payload["_not_lab"] = not_lab.classify(names, blocks, lab_only=settings.lab_tests_only)
+        payload["_not_lab"] = not_lab.classify(names, blocks, lab_only=settings.lab_tests_only, confirmed=payload.get("_corroborated") or [])
         if rerouted_why:
             payload["_rerouted"] = rerouted_why
         names = [n for n in names if n not in payload["_not_lab"]]

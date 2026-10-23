@@ -318,6 +318,54 @@ SEED: list[tuple[str, str, str | None, str]] = [
     ("usg abdomen", "USG abdomen", None, ""),
     ("usg whole abdomen", "USG whole abdomen", None, ""),
     ("usg of whole abdomen", "USG whole abdomen", None, ""),
+    # "USG W/A" is the doctor's short form of USG whole abdomen (owner, 24 Oct 2026: written "Adv (USG W/A)" and nothing reached the lab tests); "VSG" is
+    # the misreading of USG measured on a real page. Only the whole-abdomen short form is known: no other letter pair is guessed.
+    ("usg w a", "USG whole abdomen", None, "W/A written for whole abdomen"),
+    ("usg wa", "USG whole abdomen", None, "W/A written for whole abdomen"),
+    ("usg w abd", "USG whole abdomen", None, "W/Abd written for whole abdomen"),
+    ("usg whole abd", "USG whole abdomen", None, ""),
+    ("vsg w a", "USG whole abdomen", None, "W/A written for whole abdomen; the U was read as V"),
+    ("vsg whole abdomen", "USG whole abdomen", None, "the U was read as V"),
+    # TVS is the doctor's short form of transvaginal ultrasound; Echo-2D / Echo 2D are 2D Echo (the lists knew only "2D Echo": "Echo-2D" was dropped as imaging
+    # the lists do not place). Owner, 24 Oct 2026: "TVS, Echo-2D missed".
+    ("tvs", "USG TVS", None, "TVS: transvaginal ultrasound"),
+    ("t v s", "USG TVS", None, "TVS: transvaginal ultrasound"),
+    ("usg tvs", "USG TVS", None, ""),
+    ("tvs usg", "USG TVS", None, ""),
+    ("tvs scan", "USG TVS", None, ""),
+    ("transvaginal sonography", "USG TVS", None, ""),
+    ("transvaginal usg", "USG TVS", None, ""),
+    ("usg transvaginal", "USG TVS", None, ""),
+    ("echo 2d", "2D Echo", None, "echocardiography"),
+    ("echo 2 d", "2D Echo", None, "echocardiography"),
+    # TORCH is one panel (Toxoplasma, Rubella, cytomegalovirus, herpes simplex): the national list has the four parts but no panel, so it is named, with no code
+    ("torch", "TORCH panel", None, "Toxoplasma, Rubella, Cytomegalovirus, Herpes simplex"),
+    ("torch panel", "TORCH panel", None, ""),
+    ("torch profile", "TORCH panel", None, ""),
+    ("torch screen", "TORCH panel", None, ""),
+    ("torch screening", "TORCH panel", None, ""),
+    ("torch test", "TORCH panel", None, ""),
+    ("torch igg igm", "TORCH panel", None, ""),
+    # ABO and Rh typing is ONE test (a blood group). The national list holds "ABO group" (883-9) and "Rh" (10331-7) apart, so the pair has no single code here.
+    ("abo", "ABO and Rh blood group", None, "ABO group 883-9 and Rh 10331-7 in the national list"),
+    ("abo rh", "ABO and Rh blood group", None, ""),
+    ("abo and rh", "ABO and Rh blood group", None, ""),
+    ("abo rh typing", "ABO and Rh blood group", None, ""),
+    ("abo and rh typing", "ABO and Rh blood group", None, ""),
+    ("abo rh group", "ABO and Rh blood group", None, ""),
+    ("abo rh blood group", "ABO and Rh blood group", None, ""),
+    ("abo typing", "ABO and Rh blood group", None, ""),
+    ("blood group", "ABO and Rh blood group", None, "a blood group is ABO and Rh"),
+    ("blood grouping", "ABO and Rh blood group", None, ""),
+    ("blood group and rh", "ABO and Rh blood group", None, ""),
+    ("blood group rh typing", "ABO and Rh blood group", None, ""),
+    # karyotype: the national list has it for amniotic fluid only; the written verb form and the "both parents" qualifier were not matched
+    ("karyotyping", "Karyotype", None, "the national list holds Karyotype for amniotic fluid only"),
+    ("karyotyping both parents", "Karyotype", None, ""),
+    ("karyotype both parents", "Karyotype", None, ""),
+    ("karyotype blood", "Karyotype", None, ""),
+    ("blood karyotype", "Karyotype", None, ""),
+    ("blood karyotyping", "Karyotype", None, ""),
     ("whole abdomen", "USG whole abdomen", None, "written without USG: an abdomen written alone in the investigations is the ultrasound"),
     ("whole abd", "USG whole abdomen", None, "written without USG: an abdomen written alone in the investigations is the ultrasound"),
     ("lower abdomen", "USG lower abdomen", None, "written without USG: an abdomen written alone in the investigations is the ultrasound"),
@@ -337,7 +385,7 @@ SEED: list[tuple[str, str, str | None, str]] = [
     ("x ray nasopharynx", "X-ray nasopharynx", None, ""),
 ]
 
-_LEADING = ("sr ", "s ", "serum ", "plasma ", "blood ")
+_LEADING = ("bl for ", "blood for ", "blood test for ", "bld for ", "test for ", "sr ", "s ", "serum ", "plasma ", "blood ")      # "Bl for TORCH": the lead-in is not part of the name
 
 
 @dataclass(frozen=True)
@@ -403,6 +451,31 @@ def _flat(rows: dict[str, Mapped]) -> dict[str, Mapped]:
         return _cache["flat"]
 
 
+_MODALITY = re.compile(r"(?i)^\W*(x[\s.\-]*rays?|xrays?|mri|ct(?:\s*scan)?|usg|ultra\s?sound)(?![a-z])\W*")
+_MODALITY_NAME = (("mri", "MRI"), ("ct", "CT scan"), ("usg", "USG"), ("ultra", "USG"))
+_BODY_PART = re.compile(r"(?i)(?<![a-z])(?:pelvis|hips?|spine|knees?|shoulders?|chest|skull|brain|head|neck|ankles?|foot|feet|hands?|wrists?|elbows?|femur|humerus|forearm|"
+                        r"leg|thigh|sinus(?:es)?|pns|mastoids?|orbits?|face|jaw|tmj|kub|lungs?|clavicle|scapula|ribs?|sacrum|coccyx|joints?|cervical|lumbar|"
+                        r"lumbosacral|dorsal|thoracic|ls|cs|(?:[a-z]\.?\s?){1,2}spine)(?![a-z])")
+
+
+def imaging(name: str | None) -> Mapped | None:
+    """An imaging order written as MODALITY + BODY PART ("X-ray of pelvis with S/I hip AP", "X-ray LS spine AP / lat", "MRI of C spine"): ONE test, named as the
+    doctor wrote it with the modality made standard. The lists hold only a few fixed names, so every other part was thrown out as "imaging the lists do not
+    place" or reduced to the bare "MRI" (owner, 24 Oct 2026). It needs a body part: a bare modality stays the generic test and nothing is guessed."""
+    text = str(name or "").strip()
+    m = _MODALITY.match(text)
+    if not m:
+        return None
+    rest = re.sub(r"(?i)^(?:of|for|scan\s+of|scan)\b\s*", "", text[m.end():]).strip(" .-:")
+    if not _BODY_PART.search(rest) or len(re.sub(r"[^A-Za-z]", "", rest)) < 3:
+        return None
+    key = re.sub(r"[^a-z]", "", m.group(1).casefold())
+    modality = "X-ray" if key.startswith("x") else next((n for k, n in _MODALITY_NAME if key.startswith(k)), "MRI")
+    rest_one_line = re.sub(r"(?<![A-Za-z])(?:ls|cs|ap|pa|si|sc|kub|pns|tmj)(?![A-Za-z])", lambda mm: mm.group(0).upper(), re.sub(r"\s+", " ", rest), flags=re.I)
+    canonical = f"{modality} {rest_one_line}"
+    return Mapped(text, canonical, None, "modality and body part as written", "seed")
+
+
 def lookup(name: str | None) -> Mapped | None:
     """The standard test this written name stands for, or None."""
     k = norm(name)
@@ -412,6 +485,9 @@ def lookup(name: str | None) -> Mapped | None:
     hit = rows.get(k)
     if hit is not None:
         return hit
+    img = imaging(name)
+    if img is not None:
+        return img
     for lead in _LEADING:
         if k.startswith(lead):
             hit = rows.get(k[len(lead):])

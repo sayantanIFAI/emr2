@@ -37,7 +37,7 @@ MIN_SIZES = 2                    # of the three sizes must list the test
 PLAIN = "Transcribe exactly the handwriting in this image, letter by letter, line by line."
 LIST = ("This is a box from a doctor's handwritten prescription listing laboratory tests to be done (separated by commas or slashes). Write each test exactly "
         "as it is written, one per line. Write only what is there. A tick mark before a line is not a letter. Common ones: CBC, ESR, CRP, TSH, FT4, FT3, IgE, RBS, FBS, "
-        "PPBS, HbA1c, LFT, KFT, Urine RE, Ca2+ (calcium), Vit D3, Vit B12, Uric acid, USG, X-ray.")
+        "PPBS, HbA1c, LFT, KFT, Urine RE, Ca2+ (calcium), Vit D3, Vit B12, Uric acid, USG, X-ray, HBsAg, HIV, HCV, PT, APTT, S. Urea, S. Creatinine.")
 
 
 def _key(s: str | None) -> str:
