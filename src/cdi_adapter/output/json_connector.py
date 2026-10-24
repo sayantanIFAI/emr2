@@ -364,6 +364,8 @@ def build_result(inp: ResultInputs) -> dict[str, Any]:
             elif _norm_name(key) in corroborated:
                 # the whole-page answer named it and a second look at ENLARGED views of the page read it again in enough different views
                 t["reason"] = SECOND_LOOK + (f": {t['reason']}" if t.get("reason") else "")
+            elif _norm_name(key) in text_scan:
+                pass          # put in the list by a deterministic step (the list reader, the one-abbreviation repair, the page-text scan): its note below says what was read
             elif pv is not None and pv >= settings.unseen_ok_p:
                 # no line reader saw it, but asked directly at the whole page whether this test is written there, the model is sure: a second view
                 # (a different question), listed for a person to check against the image
