@@ -184,3 +184,20 @@ def test_an_ent_page_complaint_among_the_advice_is_not_turned_into_laryngoscopy(
     U.reread(_Client(), _png(), blocks, payload, "ENT")
     assert not any(isinstance(i, dict) and i.get("source") == "choice_vote" for i in payload["investigations"])
     assert "Laryngoscopy" not in str(payload["investigations"])
+
+
+# ---------------------------------------------------------------- a result line read with one unreadable letter
+def test_a_result_line_with_one_unreadable_letter_still_makes_the_name_a_result():
+    from cdi_adapter.extract import results_written as W
+
+    blocks = [{"text": "? Cr?at 0.85", "bbox": [810, 670, 975, 701]}, {"text": "CBC CRP LFT", "bbox": [100, 100, 300, 130]}]
+    assert "result is already written" in W.page_result_reason("S creat", blocks)               # p63 / p64: "Creat 0.86" among the findings is not an order
+    assert W.page_result_reason("CBC", blocks) is None
+    assert W.page_result_reason("S creat", blocks + [{"text": "Review: S creat", "bbox": [100, 400, 300, 430]}]) is None     # also ordered plainly: stays a test
+    assert W.page_result_reason("Lipase", [{"text": "Hb 11.9"}]) is None
+
+
+def test_the_box_reader_hint_list_is_the_measured_one():
+    from cdi_adapter.extract import test_box
+
+    assert "APTT" not in test_box.LIST and "Blood group" not in test_box.LIST         # extra names were echoed onto pages that do not have them

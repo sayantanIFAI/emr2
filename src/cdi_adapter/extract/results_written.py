@@ -184,16 +184,29 @@ def _page_result_reason(k: str, blocks: list[dict[str, Any]]) -> str | None:
     body = re.escape(k).replace(r"\ ", r"[\s.\-]*")
     strict = re.compile(r"(?<![A-Za-z0-9])" + body + r"(?![A-Za-z])", re.I)
     loose = re.compile(body + r"(?![A-Za-z])", re.I) if len(k) >= 3 else strict
+    seen, valued, example = _scan(strict, loose, blocks, 0)
+    if seen == 0 and re.fullmatch(r"[A-Za-z ]{4,}", k):
+        # the line that holds the result is often read with ONE letter unreadable ("Cr?at 0.85" for "Creat 0.85"): one "?" stands for one letter. MEASURED on a
+        # real page: "S creat" was listed as a test to be done although the page only has "Creat 0.86" among the findings.
+        wild = re.compile(r"(?<![A-Za-z0-9])" + "".join(r"[\s.\-]*" if c == " " else "(?:" + re.escape(c) + r"|\?)" for c in k) + r"(?![A-Za-z])", re.I)
+        seen, valued, example = _scan(wild, wild, blocks, 1)
+    if seen and valued == seen:
+        return f"a result is already written next to it ('{example}'): not a test to be done"
+    return None
+
+
+def _scan(strict: re.Pattern[str], loose: re.Pattern[str], blocks: list[dict[str, Any]], max_unread: int | None) -> tuple[int, int, str]:
+    """``(places the name is written, places with a value after it, an example)``; ``max_unread`` = how many "?" the matched text may hold (None = no limit)."""
     seen, valued, example = 0, 0, ""
     for i, b in enumerate(blocks):
         text = str(b.get("text") or "")
         for m in loose.finditer(text):
+            if max_unread is not None and m.group(0).count("?") > max_unread:
+                continue
             seen += 1
             is_strict = bool(strict.match(text, m.start()))
             nxt = _following(blocks, i) if not _ITEM.sub("", text[m.end():]).strip(" .?") else ""
             if is_strict and (_after_has_value(text[m.end():], nxt if not text[m.end():].strip() else "") or _group_value(text[m.end():], nxt)):
                 valued += 1
                 example = example or (text[m.start():min(len(text), m.end() + 14)].strip() + (" " + nxt[:18].strip() if nxt and len(text) - m.start() < 20 else ""))
-    if seen and valued == seen:
-        return f"a result is already written next to it ('{example}'): not a test to be done"
-    return None
+    return seen, valued, example

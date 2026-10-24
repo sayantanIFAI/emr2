@@ -1201,7 +1201,7 @@ def extract_document(document_id: str, *, patient_id: str | None = None,
         # they stay in the result as rejected with the reason, and are not put to the choose-from-list step
         from . import department, not_lab
         payload["_department"] = department.detect(department.header_texts(page1_blocks)) or department.normalise_hint(doc.get("department_hint"))    # from the printed header only; None when it shows none
-        payload["_not_lab"] = not_lab.classify(names, blocks, lab_only=settings.lab_tests_only, confirmed=payload.get("_corroborated") or [])
+        payload["_not_lab"] = not_lab.classify(names, blocks, lab_only=settings.lab_tests_only, confirmed=[*(payload.get("_corroborated") or []), *((payload.get("_test_box") or {}).get("accepted") or [])])
         if rerouted_why:
             payload["_rerouted"] = rerouted_why
         names = [n for n in names if n not in payload["_not_lab"]]
