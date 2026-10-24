@@ -133,12 +133,57 @@ def test_ac2_a_sideways_page_is_turned_upright_and_the_rotation_is_recorded(k):
     assert out.shape[:2] == page.shape[:2]
 
 
-def test_a_sideways_page_whose_way_up_cannot_be_told_is_held_not_guessed():
+def test_a_sideways_page_whose_way_up_cannot_be_told_is_held_not_guessed(monkeypatch):
+    monkeypatch.setattr(settings, "orient_undecided_ask_model", False)      # the earlier rule, still available
     caps = _page([t.upper() for t in LINES])                              # all capitals are symmetric top to bottom
     _out, meta = _norm(np.ascontiguousarray(np.rot90(caps, 1)))
     assert "rotate90" not in meta["steps"]
     assert meta["quality"]["passed"] is False and meta["quality"]["reason_codes"] == ["orientation_uncertain"]
     assert any(s["op"] == "sideways_undecided" for s in meta["transform"]["steps"])
+
+
+class _Which:
+    """A model that says upright for the turns in ``up`` and for no other."""
+
+    def __init__(self, up):
+        self.up, self.asked = set(up), 0
+
+    def vlm_json_ex(self, png, *_a, **_k):
+        import cv2 as _cv
+
+        self.asked += 1
+        return {"upright": self.asked in self.up}, None
+
+
+def test_a_sideways_page_with_no_clear_way_up_is_read_and_the_model_picks_the_turn(monkeypatch):
+    """Owner, 24 Oct 2026: a handwriting-only screenshot was refused with 'which way is up could not be decided'. It is read now."""
+    from cdi_adapter.ingest import orient_model
+
+    caps = _page([t.upper() for t in LINES])
+    sideways = np.ascontiguousarray(np.rot90(caps, 1))
+    client = _Which(up=[2])                                               # the model says the SECOND candidate turn (k = 3) reads upright
+    monkeypatch.setattr(orient_model, "_png", orient_model._png)
+    import cdi_adapter.ml.client as mc
+
+    monkeypatch.setattr(mc, "get_client", lambda: client)
+    out, meta = _norm(sideways)
+    assert meta["quality"]["passed"] is True and "orientation_uncertain" in meta["quality"]["warning_codes"]
+    step = next(s for s in meta["transform"]["steps"] if s["op"] == "rotate90")
+    assert step["by"] == "model" and client.asked == 2
+
+
+def test_the_page_is_still_read_when_the_model_cannot_be_asked(monkeypatch):
+    import cdi_adapter.ml.client as mc
+
+    class _Down:
+        def vlm_json_ex(self, *_a, **_k):
+            raise RuntimeError("model unreachable")
+
+    monkeypatch.setattr(mc, "get_client", lambda: _Down())
+    caps = _page([t.upper() for t in LINES])
+    _out, meta = _norm(np.ascontiguousarray(np.rot90(caps, 1)))
+    assert meta["quality"]["passed"] is True and "rotate90" in meta["steps"]           # chosen by the ink score or the default turn, with a warning
+    assert meta["quality"]["warning_codes"].count("orientation_uncertain") == 1
 
 
 def test_an_upright_page_is_left_alone():
@@ -352,9 +397,11 @@ def test_the_original_bytes_are_never_touched_and_the_transform_is_stored_with_t
     assert np.asarray(meta["transform"]["matrix"]).shape == (3, 3)
 
 
-def test_a_held_page_still_goes_through_the_normal_hold_path():
-    """The ingest service holds on ``meta['quality']['passed']`` and ``reasons`` in enforce mode."""
+def test_a_held_page_still_goes_through_the_normal_hold_path(monkeypatch):
+    """The ingest service holds on ``meta['quality']['passed']`` and ``reasons`` in enforce mode (here with the earlier hold rule for an undecided page)."""
     from cdi_adapter.ingest.service import quality_hold_reasons
+
+    monkeypatch.setattr(settings, "orient_undecided_ask_model", False)
 
     class P:
         page_no = 1

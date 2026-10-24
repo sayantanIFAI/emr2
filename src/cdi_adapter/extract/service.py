@@ -1103,12 +1103,16 @@ def extract_document(document_id: str, *, patient_id: str | None = None,
             if src and looks_like_medicine(src):
                 continue                       # a medicine order ("Tab Zincovit 1 tab ...") is not a list of tests
             for name, as_read, placed in test_cluster.list_entries(src):
+                fixed = None if placed else test_cluster.near_miss(re.sub(r"[^A-Za-z]", "", name))
+                if fixed and test_cluster.placed_text(fixed):          # "TCOE" -> TCDC, "LEFT" -> LFT: one abbreviation it can only be, beside tests the lists place
+                    name, placed = fixed, True
                 key = re.sub(r"[^a-z0-9]", "", name.casefold())
                 if key in have_names:
                     continue
                 have_names.add(key)
                 payload.setdefault("investigations", []).append({"text": name, "evidence": [], "source": "list_context"})
-                payload["_text_scan"][name] = (f"listed together with a test the lists place ('{as_read}')" if placed else
+                payload["_text_scan"][name] = (f"read as '{as_read}' (one abbreviation it can only be: {name}); listed together with tests the lists place" if placed and as_read != name and not test_cluster.placed_text(as_read) else
+                                               f"listed together with a test the lists place ('{as_read}')" if placed else
                                                f"written in a list with a test, not recognised (read as '{as_read}')")
                 names.append(name)
                 listed_entries.append((name, as_read, placed))

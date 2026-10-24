@@ -106,6 +106,9 @@ class Settings(BaseSettings):
     # page geometry (IM-S2). All thresholds are PLACEHOLDERS measured on synthetic pages only.
     orient_enabled: bool = True           # turn a sideways page (90 / 270 degrees) upright when the way up is clear
     orient_upright_margin: float = 0.02   # how much clearer one way must be (ink-centroid score); else hold for retake
+    # a sideways page whose way up neither the ink shape nor the printed text can tell (handwriting only) is READ: the model says which turn reads upright, the page goes
+    # on with a warning. False = hold it for a retake (the earlier rule). Owner, 24 Oct 2026: such pages must be allowed.
+    orient_undecided_ask_model: bool = True
     # 180 degrees: needs a clear negative score on mixed-case text. OFF: the signal was measured only on
     # synthetic text and real handwriting may bias it, and a wrong 180 turn would ruin an upright page.
     orient_upside_down: bool = False
@@ -223,7 +226,9 @@ class Settings(BaseSettings):
     # --- image quality gate (E2-S12) ---
     quality_gate_mode: str = "enforce"    # enforce = hold for rescan | warn = record only | off
     quality_min_blur_var: float = 25.0    # variance of the Laplacian; sharp 200-dpi scans >> 100
-    quality_min_short_side_px: int = 600
+    # a picture below this is held for a rescan. 300, not 600 (owner, 24 Oct 2026: screenshots of 538 and 577 px were refused). The pipeline already enlarges a small
+    # picture before it is read (ingest/enhance.py); blur, glare and text-size checks still hold a picture that cannot be read.
+    quality_min_short_side_px: int = 300
     # Text too small to read reliably (IM-S1): the p85 height of a glyph in pixels, measured on the page
     # as sent to the readers. PLACEHOLDER, not tuned on real photos or handwriting. Basis: on clean
     # SYNTHETIC printed text RapidOCR read >= 97% of characters down to a 8 px font (glyph p85 ~ 6 px),

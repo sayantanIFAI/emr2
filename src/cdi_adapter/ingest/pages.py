@@ -229,6 +229,13 @@ def _straighten(arr: np.ndarray, meta: dict[str, Any]) -> tuple[np.ndarray, dict
                 meta["orientation_vote"] = voted[1]
                 if voted[0] is not None:
                     k, info = voted[0], {"by": "printed text", **voted[1]}
+            if k is None and settings.orient_undecided_ask_model:
+                # no printed text and no clear ink shape (a handwriting-only picture): the model says which of the two turns reads upright; the page is READ, with a warning
+                from . import orient_model
+
+                k, how = orient_model.which_way(arr, info)
+                info = {**info, **how}
+                _warn(meta, ORIENTATION_UNCERTAIN, f"the page was sideways and the way up was chosen by looking at the writing ({how['by']}): check the result")
             if k is None:
                 _hold(meta, ORIENTATION_UNCERTAIN, "the page is sideways but which way is up could not be decided "
                       "- please retake it with the page upright")

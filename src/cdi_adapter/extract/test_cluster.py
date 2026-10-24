@@ -104,6 +104,13 @@ def near_miss(token: str) -> str | None:
                 hits.append(a)
         elif len(a) == len(w) + 1 and any(a[:k] + a[k + 1:] == w and a[k] == a[k - 1] for k in range(1, len(a))):
             hits.append(a)                                         # a doubled letter written once ("apt" for APTT)
+    if not hits:
+        # not one confusable letter, but ONE abbreviation it can only be: the same first two letters and the same length with at most two letters off ("TCOE" for
+        # TCDC), or the abbreviation with a vowel added ("LEFT" for LFT). Never when two abbreviations fit. MEASURED on a real page: the printed OCR read tcDC,
+        # the model wrote TCOE, and no list could place either.
+        near = [a for a in abbr if len(a) == len(w) and len(a) >= 4 and a[:2] == w[:2] and sum(x != y for x, y in zip(w, a)) <= 2]
+        near += [a for a in abbr if len(a) == len(w) - 1 and len(a) >= 3 and any(w[:k] + w[k + 1:] == a and w[k] in "aeiou" for k in range(1, len(w)))]
+        hits = list(dict.fromkeys(near))
     return hits[0].upper() if len(hits) == 1 else None             # two ways to read it: it is not taken
 
 

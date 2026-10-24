@@ -105,7 +105,7 @@ def _dark_page() -> np.ndarray:
     (lambda: cv2.GaussianBlur(_page(), (0, 0), 7), q.BLURRED),
     (_glare_page, q.GLARE),
     (_dark_page, q.TOO_DARK),
-    (lambda: _page(24, 500, 700), q.RESOLUTION_LOW),
+    (lambda: _page(24, 250, 350), q.RESOLUTION_LOW),                      # below the 300 px short side (a 538 / 577 px screenshot is allowed now)
     (lambda: _page(9, 4000, 5600), q.TEXT_TOO_SMALL),
 ])
 def test_every_hold_has_a_stable_code_one_per_message(make, code):

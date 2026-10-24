@@ -1,0 +1,16 @@
+{
+  "_about": "The lab tests written on 13 real prescription pages, read by hand from enlarged crops (24 Oct 2026). Test names only: no patient data. It is one reader's reading, not an authority: a line marked 'unsure' could not be read with confidence. Used by scripts/score_batch.py to count found / missed / extra for a run.",
+  "p56": {"tests": ["Chest ECG", "CBC", "Na+ & K+", "Lipid Profile"]},
+  "p57": {"tests": ["Fever profile"]},
+  "p58": {"tests": ["TSH"]},
+  "p59": {"tests": ["FBS", "PPBS", "Vitamin D"]},
+  "p60": {"tests": ["MRI LS spine"], "unsure": ["written LS or L5"]},
+  "p61": {"tests": ["CBC", "Blood Sugar", "PP", "HBsAg", "HIV", "HCV", "LFT", "S. Urea", "S. Creatinine", "BT", "CT", "PT", "APTT", "ECG", "X-ray RT mastoid", "X-ray chest PA"], "unsure": ["BT/CT read as B.T/C.T"]},
+  "p62": {"tests": ["CBC", "CRP", "LFT", "Creatinine"]},
+  "p63": {"tests": ["CBC", "CRP", "LFT"]},
+  "p64": {"tests": ["CBC", "CRP", "LFT"]},
+  "p65": {"tests": ["HbA1c", "FBS", "PPBS", "S. Lipase", "TSH", "FT4"]},
+  "p66": {"tests": ["CBC", "Urine R/E & C/S", "LFT", "IL6 CLIA", "D-dimer"]},
+  "p67": {"tests": ["CBC", "KFT", "LFT"]},
+  "p68": {"tests": ["Fever profile"]}
+}

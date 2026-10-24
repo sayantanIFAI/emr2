@@ -326,6 +326,11 @@ SEED: list[tuple[str, str, str | None, str]] = [
     ("usg whole abd", "USG whole abdomen", None, ""),
     ("vsg w a", "USG whole abdomen", None, "W/A written for whole abdomen; the U was read as V"),
     ("vsg whole abdomen", "USG whole abdomen", None, "the U was read as V"),
+    # TC / DC: the total and the differential leucocyte count (owner, 24 Oct 2026: the page printed "tcDC" and the lists had no such name, so the model's "TCOE" was kept)
+    ("tc dc", "Total count and differential count", None, "TC / DC: total and differential leucocyte count"),
+    ("tcdc", "Total count and differential count", None, "TC / DC: total and differential leucocyte count"),
+    ("tlc dlc", "Total count and differential count", None, "TLC / DLC: total and differential leucocyte count"),
+    ("tlcdlc", "Total count and differential count", None, "TLC / DLC: total and differential leucocyte count"),
     # TVS is the doctor's short form of transvaginal ultrasound; Echo-2D / Echo 2D are 2D Echo (the lists knew only "2D Echo": "Echo-2D" was dropped as imaging
     # the lists do not place). Owner, 24 Oct 2026: "TVS, Echo-2D missed".
     ("tvs", "USG TVS", None, "TVS: transvaginal ultrasound"),
@@ -458,14 +463,96 @@ _BODY_PART = re.compile(r"(?i)(?<![a-z])(?:pelvis|hips?|spine|knees?|shoulders?|
                         r"lumbosacral|dorsal|thoracic|ls|cs|(?:[a-z]\.?\s?){1,2}spine)(?![a-z])")
 
 
+_NEAR_BODY = ("chest", "abdomen", "pelvis", "spine", "knee", "shoulder", "head", "brain", "neck", "hip", "kub")
+
+
+def _sim(a: str, b: str) -> float:
+    import difflib
+
+    return difflib.SequenceMatcher(None, a, b).ratio()
+
+
+def _near_modality(tok: str) -> str | None:
+    """The modality a short word is a near-miss of ("usa", "usq", "vsg" for USG; "xy", "xg", "xry" for X-ray). Only used when a body part follows."""
+    t = re.sub(r"[^a-z]", "", tok.casefold())
+    if 2 <= len(t) <= 5 and t[0] == "x" and _sim(t, "xray") >= 0.6:
+        return "X-ray"
+    if 3 <= len(t) <= 4 and _sim(t, "usg") >= 0.6 and t not in ("us",):
+        return "USG"
+    return None
+
+
+def _near_body(tok: str) -> str | None:
+    t = re.sub(r"[^a-z]", "", tok.casefold())
+    if len(t) < 3:
+        return None
+    for b in _NEAR_BODY:
+        if _sim(t, b) >= 0.6 or (t[:2] == b[:2] and _sim(t, b) >= 0.45):
+            return b
+    return None
+
+
+def _imaging_near_miss(text: str) -> Mapped | None:
+    """"USA where aldoros" is USG whole abdomen and "xy chd Panies (visit)" is X-ray chest PA: a modality written one or two letters off, then a body part
+    written badly. The doctor's "whole" after USG is the whole abdomen (owner's rule). Both parts must be there: a stray "usa" alone is nothing."""
+    toks = re.findall(r"[A-Za-z]+", text)
+    if len(toks) < 2:
+        return None
+    mod = _near_modality(toks[0])
+    if mod is None:
+        return None
+    for i, t in enumerate(toks[1:4], start=1):
+        if mod == "USG" and _sim(re.sub(r"[^a-z]", "", t.casefold()), "whole") >= 0.6:
+            return Mapped(text, "USG whole abdomen", None, "read as '" + text + "' (USG whole abdomen)", "seed")
+        body = _near_body(t)
+        if body:
+            views = " PA" if any(re.sub(r"[^a-z]", "", x.casefold()).startswith("pa") for x in toks[i + 1:i + 3]) else ""
+            return Mapped(text, f"{mod} {body}{views}", None, "read as '" + text + "' (" + mod + " " + body + ")", "seed")
+    return None
+
+
+_USG_WORDS = frozenset(("usg", "uss", "usgs", "ultrasound", "ultrasonography", "sonography", "sono", "usgt", "vsg", "vsgt", "ugs", "usq", "usc", "uso", "usa", "isg", "ysg"))      # + misreadings seen on real pages
+
+
+def _usg_whole_abdomen(text: str) -> Mapped | None:
+    """USG whole abdomen, however it is written, in either order: any form of USG (USG, U.S.G., USS, ultrasound, sonography, or a near-miss such as USA / VSG /
+    VSGT / UGS) AND the word "whole" (or W/A, WA, W/Abd, "whole" misspelt) in the same phrase. Per the owner, "USG whole" means the whole abdomen, a bare
+    "whole abdomen" is the ultrasound, and "W/A" is whole abdomen (24 Oct 2026: "USG WHOLE ABDOMEN or USG W/A must be extracted correctly").
+    Not applied when the phrase names another part (pelvis, KUB, lower / upper) or says "w/ abdomen" (with abdomen: the abdomen, not the whole)."""
+    t = text.casefold()
+    t = re.sub(r"(?<![a-z])([a-z])\.(?=[a-z]\.?(?![a-z]))", r"\1", t)             # u.s.g. -> usg, w.a -> wa
+    t = t.replace(".", "")
+    toks = re.findall(r"[a-z]+", t)
+    if len(toks) < 1 or any(x in ("pelvis", "kub", "lower", "upper", "pelvic", "kidney", "chest", "thorax") for x in toks):
+        return None
+    glued = "".join(toks)
+    mod = any(x in _USG_WORDS or x.startswith("usg") or (3 <= len(x) <= 4 and _sim(x, "usg") >= 0.6 and x != "us") for x in toks) \
+        or ("ultra" in toks and "sound" in toks) or glued.startswith(("usgw", "usgwa"))
+    whole = False
+    for i, x in enumerate(toks):
+        nxt = toks[i + 1] if i + 1 < len(toks) else ""
+        if x in ("wa", "wabd") or _sim(x, "whole") >= 0.6 or x.startswith("whole") or (x == "w" and nxt in ("a", "abd")) or x.startswith("usgwa") or x.startswith("usgw") and "abd" in x:
+            whole = True
+    if "w" in toks and "abdomen" in toks and not whole:
+        return None                                                       # "w/ abdomen": with abdomen
+    if mod and whole:
+        return Mapped(text, "USG whole abdomen", None, "read as '" + text + "' (USG whole abdomen)", "seed")
+    if whole and not mod and re.search(r"(?<![a-z])(?:wa|whole)\W*(?:abd|abdomen)?\W*(?:usg|uss)(?![a-z])", t):
+        return Mapped(text, "USG whole abdomen", None, "read as '" + text + "' (USG whole abdomen)", "seed")
+    return None
+
+
 def imaging(name: str | None) -> Mapped | None:
     """An imaging order written as MODALITY + BODY PART ("X-ray of pelvis with S/I hip AP", "X-ray LS spine AP / lat", "MRI of C spine"): ONE test, named as the
     doctor wrote it with the modality made standard. The lists hold only a few fixed names, so every other part was thrown out as "imaging the lists do not
     place" or reduced to the bare "MRI" (owner, 24 Oct 2026). It needs a body part: a bare modality stays the generic test and nothing is guessed."""
     text = str(name or "").strip()
+    usg = _usg_whole_abdomen(text)
+    if usg is not None:
+        return usg
     m = _MODALITY.match(text)
     if not m:
-        return None
+        return _imaging_near_miss(text)
     rest = re.sub(r"(?i)^(?:of|for|scan\s+of|scan)\b\s*", "", text[m.end():]).strip(" .-:")
     if not _BODY_PART.search(rest) or len(re.sub(r"[^A-Za-z]", "", rest)) < 3:
         return None

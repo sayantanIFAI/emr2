@@ -201,3 +201,64 @@ def test_the_box_reader_hint_list_is_the_measured_one():
     from cdi_adapter.extract import test_box
 
     assert "APTT" not in test_box.LIST and "Blood group" not in test_box.LIST         # extra names were echoed onto pages that do not have them
+
+
+# ---------------------------------------------------------------- the 24 Oct page: "USA where aldoros", "TCOE", "LEFT", "xy chd Panies"
+@pytest.mark.parametrize("written,standard", [
+    ("USA where aldoros", "USG whole abdomen"), ("USA where al?doros", "USG whole abdomen"), ("USQ whole abdomen", "USG whole abdomen"),
+    ("xy chd Panies", "X-ray chest PA"), ("xy chd Panies (visit)", "X-ray chest PA"),
+    ("TC DC", "Total count and differential count"), ("TCDC", "Total count and differential count"), ("TC/DC", "Total count and differential count"),
+    ("TLC / DLC", "Total count and differential count"),
+])
+def test_the_lines_of_the_page_that_missed_usg_and_tcdc(written, standard):
+    assert std(written) == standard
+
+
+@pytest.mark.parametrize("text", ["USA", "usa today", "Xmas chest", "US tour", "xyz"])
+def test_a_stray_word_is_not_an_imaging_order(text):
+    assert std(text) is None
+
+
+def test_a_short_unknown_word_beside_tests_is_matched_to_the_one_abbreviation_it_can_only_be():
+    assert T.near_miss("TCOE") == "TCDC" and T.near_miss("LEFT") == "LFT"
+    for w in ("Case", "Tabs", "Rest", "LFT", "CBC", "Blood"):
+        assert T.near_miss(w) is None, w
+
+
+def test_the_advice_list_of_that_page_gives_every_test_it_holds():
+    got = {name for name, _r, _p in T.list_entries("Blood for Hb, TCOE placed on Vaca each LEFT FBS")}
+    assert "TCOE" in got and "FBS" in got
+    assert [n for n, _r, _p in T.list_entries("USA where aldoros")] == ["USA where aldoros"]
+    assert [n for n, _r, _p in T.list_entries("xy chd Panies (visit)")] == ["xy chd Panies"]
+
+
+# ---------------------------------------------------------------- USG whole abdomen must never be missed, however it is written
+USG_WA = ["USG whole abdomen", "USG Whole Abdomen", "USG W/A", "USG (W/A)", "(USG W/A)", "USG W/A.", "USG WA", "USG-WA", "USG - W/A", "U.S.G. whole abdomen", "U.S.G. W/A",
+          "USG of whole abdomen", "USG for whole abdomen", "USG Whole Abd", "USG W/Abd", "USG whole", "USG whole abdoman", "USG whole abdomem", "USG (whole abdomen)",
+          "Whole abdomen", "whole abdomen USG", "WA USG", "USS whole abdomen", "VSGT (whole Abdomen)", "VSG W/A", "USA whole abdomen", "USA where aldoros",
+          "UGS whole abdomen", "USG wholeabdomen", "USGWA", "Ultrasound whole abdomen", "Sonography whole abdomen", "USG whole abdomen (PRE-OP)", "Ultra sound whole abdomen"]
+
+
+@pytest.mark.parametrize("written", USG_WA)
+def test_usg_whole_abdomen_is_extracted_however_it_is_written(written):
+    pieces = split_tests(written)
+    assert any(std(p) == "USG whole abdomen" and not_lab.entry_reason(p) is None for p in pieces), (written, pieces)
+
+
+@pytest.mark.parametrize("written", ["USG abdomen", "USG lower abdomen", "USG KUB", "USG w/ abdomen", "USG pelvis", "USA", "USG neck", "wholesale", "X-ray whole spine"])
+def test_other_ultrasounds_and_stray_words_are_not_turned_into_whole_abdomen(written):
+    assert not any(std(p) == "USG whole abdomen" for p in split_tests(written))
+
+
+def test_a_small_screenshot_is_no_longer_held_for_a_rescan():
+    from cdi_adapter.config import settings
+    from cdi_adapter.recognition import quality
+
+    assert settings.quality_min_short_side_px <= 538                                    # the 538 px screenshot the owner uploaded
+    import numpy as np
+
+    rng = np.random.default_rng(1)
+    img = np.full((700, 538, 3), 245, np.uint8)
+    for y in range(40, 660, 36):
+        img[y:y + 3, 40:500] = rng.integers(0, 90, (3, 460, 1))                          # ink-like lines
+    assert quality.RESOLUTION_LOW not in quality.assess(img).reason_codes
