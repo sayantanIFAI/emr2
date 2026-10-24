@@ -133,14 +133,16 @@ def printed_banner(blocks: list[dict] | None) -> dict[str, str] | None:
             continue
         got = letters(m.group(1))
         if len(got) >= 3:
-            return {"letters": got, "raw": re.sub(r"[^A-Za-z]", "", m.group(1)), "title": "", "age": m.group(2),
-                    "sex": "Male" if m.group(3).lower() in ("m", "male") else "Female"}
+            nm = m.group(1).strip()
+            lead = _TITLE_LEAD.match(nm)
+            return {"letters": got, "raw": re.sub(r"[^A-Za-z]", "", nm[lead.end():] if lead else nm), "title": lead.group(0).strip(" .") if lead else "",
+                    "age": m.group(2), "sex": "Male" if m.group(3).lower() in ("m", "male") else "Female"}
     return None
 
 
 _NAME_LABEL = re.compile(r"(?i)^\W*(?:patient'?s?name|nameofthepatient|nameofpatient|patientname|name)\W*[:\-]+\W*")
 _FIELD_END = re.compile(r"(?i)(?:gender|sex|age|dob|date|address|contact|mobile|mob|phone|ph)\s*[:\-]")
-_TITLE_LEAD = re.compile(r"(?i)^(?:mr|mrs|ms|miss|smt|shri|sri|master|baby|kum|late)(?![a-z]{2})\.?\s*")
+_TITLE_LEAD = re.compile(r"(?i)^(?:mrs|mr|ms|miss|smt|shri|sri|master|baby|kum|late)(?![a-z])\.?\s*")
 
 
 def printed_name_field(blocks: list[dict] | None) -> dict[str, str] | None:

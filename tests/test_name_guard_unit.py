@@ -30,8 +30,8 @@ def test_the_signature_label_is_not_part_of_a_name():
 
 
 def test_the_printed_patient_line_is_found_with_its_age_and_sex():
-    assert names.printed_banner([DOCTOR, BANNER, RX]) == {"letters": "sayandas", "age": "40", "sex": "Male"}
-    assert names.printed_banner([{"text": "Mrs Sita Roy (45/F)", "recognition": PRINTED}]) == {"letters": "sitaroy", "age": "45", "sex": "Female"}
+    assert names.printed_banner([DOCTOR, BANNER, RX]) == {"letters": "sayandas", "raw": "SAYANDAS", "title": "", "age": "40", "sex": "Male"}
+    assert names.printed_banner([{"text": "Mrs Sita Roy (45/F)", "recognition": PRINTED}]) == {"letters": "sitaroy", "raw": "SitaRoy", "title": "Mrs", "age": "45", "sex": "Female"}
     assert names.name_on_page([BANNER])                                            # "(40Y/MALE)" is an age and a sex
 
 

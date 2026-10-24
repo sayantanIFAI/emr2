@@ -219,7 +219,7 @@ def _split_composite(part: str) -> list[str]:
     return _split_runs(part)
 
 
-_ABO_JOIN = ""
+_ABO_JOIN = "\u0001"
 _ABO_RH = re.compile(r"(?i)(?<![a-z])(abo)\s*(?:\+|&|/|,|and)?\s*(rh)(?![a-z])")
 
 
