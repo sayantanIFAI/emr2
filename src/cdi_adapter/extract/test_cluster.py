@@ -400,6 +400,19 @@ def answer_tests(text: str) -> list[str]:
     return out
 
 
+def joined_letters(piece: str) -> str | None:
+    """A two- or three-letter word that starts with B and is, with a joined 'TS' put for the B (and an N read for the H), a test the lists place: 'BH' /
+    'Bn' is TSH. Used only beside other listed tests (the caller's ``evidence``); the note says what was read and the test stays 'to check'. ASSUMPTION:
+    taken from the owner's page (CBC, TSH, RBS written 'CBC, BH, RBS'), not yet seen on others."""
+    w = re.sub(r"[^a-z]", "", piece.casefold())
+    if not 2 <= len(w) <= 3 or w[0] != "b" or placed_text(piece):
+        return None
+    for v in dict.fromkeys((("ts" + w[1:]), ("ts" + w[1:]).replace("n", "h"))):
+        if placed_text(v):
+            return v.upper()
+    return None
+
+
 def repair_piece(piece: str, evidence: bool) -> tuple[str, str] | None:
     """A test the lists do not place, put right: sodium and potassium written "Na+ & K+" (any reading of the + signs), or a word that is a
     one-letter handwriting slip of a strong abbreviation ("ECO" -> ECG) when ``evidence`` says other tests are listed beside it. The
@@ -418,6 +431,9 @@ def repair_piece(piece: str, evidence: bool) -> tuple[str, str] | None:
             return trimmed, f"read as '{piece}' (the doctor's \"Test\" abbreviation dropped)"      # "Lipid Profile Tr" -> Lipid Profile
     if not evidence:
         return None
+    joined = joined_letters(piece)
+    if joined:
+        return joined, f"read as '{piece}' (B is how a joined TS is often written: {joined})"
     fixed: list[str] = []
     slips: list[str] = []
     for w in piece.split():

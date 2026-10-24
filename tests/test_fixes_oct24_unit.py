@@ -262,3 +262,20 @@ def test_a_small_screenshot_is_no_longer_held_for_a_rescan():
     for y in range(40, 660, 36):
         img[y:y + 3, 40:500] = rng.integers(0, 90, (3, 460, 1))                          # ink-like lines
     assert quality.RESOLUTION_LOW not in quality.assess(img).reason_codes
+
+
+def test_ugi_endoscopy_rut_and_usg_wa_lookalikes_are_placed():
+    """Owner page 24 Oct 2026: 'UGI Endoscopy + RUT', 'USG W/A' (read 'USG Loin'), 'CBC, TSH, RBS' (read 'CBC, Bn, RBS'): none may be lost."""
+    from cdi_adapter.extract import lab_mapping, test_cluster
+
+    assert lab_mapping.lookup("UGI Endoscopy").canonical == "Upper GI endoscopy"
+    assert lab_mapping.lookup("RUT").canonical == "Rapid urease test"
+    for t in ("USG Loin", "USG LD/A", "usg ldia"):
+        assert lab_mapping.lookup(t).canonical == "USG whole abdomen"
+    for w in ("Bn", "BH", "bh"):
+        assert test_cluster.repair_piece(w, True)[0] == "TSH"
+    assert test_cluster.repair_piece("Bn", False) is None            # no other listed test beside it: left alone
+    assert test_cluster.joined_letters("BUN") is None and test_cluster.joined_letters("Bp") is None
+    p = {"investigations": [{"text": "UGI Endoscopy + RUT"}, {"text": "CBC, Bn, RBS"}]}
+    test_cluster.repair_investigations(p)
+    assert p["investigations"][1]["text"] == "CBC, TSH, RBS"
